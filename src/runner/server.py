@@ -113,7 +113,6 @@ async def store_data(
     Store the given data in the collection with the given name. The data will be stored in a
     :param request: The request body
     :param collection_name: The name of the collection to store the data in
-    :param content_type: The type of the data
     :return:
     """
     # Convert timestamp to datetime

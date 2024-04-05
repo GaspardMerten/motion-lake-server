@@ -27,7 +27,7 @@ class Base(DeclarativeBase):
 class Collection(Base):
     __tablename__ = "collection"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(30), unique=True)
+    name: Mapped[str] = mapped_column(String(256), unique=True)
 
     def __repr__(self) -> str:
         return f"Collection(id={self.id!r}, name={self.name!r})"
