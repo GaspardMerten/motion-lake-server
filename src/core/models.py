@@ -7,3 +7,5 @@ class DataType(Enum):
     GTFS_RT = 2
     CSV = 3
     GTFS = 4
+
+

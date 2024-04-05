@@ -42,14 +42,6 @@ async def all_collections():
         return {"error": str(e)}
 
 
-@app.get("/collection/{collection_name}")
-async def get_collection(collection_name: str):
-    try:
-        return core.list_collections(collection_name)
-    except AnotherWorldException as e:
-        return {"error": str(e)}
-
-
 @app.get("/query/{collection_name}")
 async def query_collection(
         collection_name: str,
@@ -109,7 +101,7 @@ async def create_collection(collection: CollectionRequest):
 class StoreRequest(BaseModel):
     timestamp: int | float
     data: bytes
-    content_type: str | None
+    content_type: int | None
     create_collection: bool = False
 
 
