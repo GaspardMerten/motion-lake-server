@@ -15,6 +15,7 @@ from src.core.models import DataType
 from src.core.persistence import PersistenceManager
 from src.core.storage.base import InternalStorageManager
 from src.core.tables import Collection
+from src.core.utils.exception import AnotherWorldException
 
 
 class Engine(LoggableComponent):
@@ -93,8 +94,11 @@ class Engine(LoggableComponent):
         :return: None
         """
 
-        if create_collection and not self.persistence_manager.get_collection_by_name(collection_name):
-            self.create_collection(collection_name)
+        if create_collection:
+            try:
+                self.persistence_manager.get_collection_by_name(collection_name)
+            except AnotherWorldException:
+                self.create_collection(collection_name)
 
         # Append the segment to the buffered fragment
         current_size = self.io_manager.get_size(collection_name, BUFFER)
