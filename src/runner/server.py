@@ -52,12 +52,12 @@ async def get_collection(collection_name: str):
 
 @app.get("/query/{collection_name}")
 async def query_collection(
-    collection_name: str,
-    min_timestamp: int,
-    max_timestamp: int,
-    ascending: bool,
-    limit: int,
-    offset: int,
+        collection_name: str,
+        min_timestamp: int,
+        max_timestamp: int,
+        ascending: bool,
+        limit: int,
+        offset: int,
 ):
     """
     Query the data in the collection with the given name. The data will be filtered using the
@@ -110,11 +110,12 @@ class StoreRequest(BaseModel):
     timestamp: int | float
     data: bytes
     content_type: str | None
+    create_collection: bool = False
 
 
 @app.post("/store/{collection_name}/")
 async def store_data(
-    request: StoreRequest, collection_name: str
+        request: StoreRequest, collection_name: str
 ):
     """
     Store the given data in the collection with the given name. The data will be stored in a
@@ -126,7 +127,10 @@ async def store_data(
     # Convert timestamp to datetime
     timestamp = datetime.fromtimestamp(request.timestamp)
     try:
-        core.store(collection_name, timestamp, request.data, data_type=DataType(request.content_type) if request.content_type else None)
+        core.store(collection_name, timestamp, request.data,
+                   data_type=DataType(request.content_type) if request.content_type else None,
+                   create_collection=request.create_collection
+                   )
     except AnotherWorldException as e:
         return {"error": str(e)}
 

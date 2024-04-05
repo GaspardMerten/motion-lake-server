@@ -1,6 +1,6 @@
 FROM python
 
-# Copy all the files from the project to the container
+# Copy all the files from the project to the container (except the ones in .dockerignore)
 COPY . /app
 
 # Set the working directory

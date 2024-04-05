@@ -25,10 +25,10 @@ class Orchestrator(LoggableComponent):
     """
 
     def __init__(
-        self,
-        persistence_manager: PersistenceManager,
-        io_manager: IOManager,
-        internal_storage: InternalStorageManager,
+            self,
+            persistence_manager: PersistenceManager,
+            io_manager: IOManager,
+            internal_storage: InternalStorageManager,
     ) -> None:
         """
         Initialize the Orchestrator with the given parameters.
@@ -66,7 +66,8 @@ class Orchestrator(LoggableComponent):
         return self._engine.list_collections()
 
     def store(
-        self, collection_name: str, timestamp: datetime, data: bytes, data_type=None
+            self, collection_name: str, timestamp: datetime, data: bytes, data_type=None,
+            create_collection: bool = False
     ):
         """
         Store the given data in the collection with the given name. The data will be stored in a
@@ -79,19 +80,20 @@ class Orchestrator(LoggableComponent):
         :param timestamp: The timestamp to associate with the data
         :param data: The data to store
         :param data_type: (Optional) The type of the data
+        :param create_collection: Whether to create the collection if it does not exist
         :return: None
         """
 
-        return self._engine.store(collection_name, timestamp, data, data_type)
+        return self._engine.store(collection_name, timestamp, data, data_type, create_collection)
 
     def query(
-        self,
-        collection_name: str,
-        min_timestamp: datetime = datetime(1970, 1, 1),
-        max_timestamp: datetime = datetime(2100, 1, 1),
-        ascending: bool = True,
-        limit: int = None,
-        offset: int = None,
+            self,
+            collection_name: str,
+            min_timestamp: datetime = datetime(1970, 1, 1),
+            max_timestamp: datetime = datetime(2100, 1, 1),
+            ascending: bool = True,
+            limit: int = None,
+            offset: int = None,
     ) -> List[Tuple[bytes, datetime]]:
         """
         Query the data in the collection with the given name. The data will be filtered using the
