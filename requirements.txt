@@ -1,0 +1,14 @@
+SQLAlchemy~=2.0.28
+pyarrow~=15.0.2
+gtfs-realtime-bindings
+numpy~=1.26.4
+fastapi~=0.110.1
+matplotlib~=3.8.4
+requests~=2.31.0
+uvicorn~=0.29.0
+pandas~=2.2.1
+starlette~=0.37.2
+aiosqlite
+psycopg2-binary
+filelock~=3.13.3
+pydantic~=2.6.4
