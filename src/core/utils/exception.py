@@ -1,4 +1,2 @@
 class AnotherWorldException(Exception):
     pass
-
-

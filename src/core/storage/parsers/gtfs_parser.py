@@ -78,13 +78,10 @@ class GTFSParser(BaseParser):
 
     def serialize(self, data: dict) -> bytes:
         files = {}
-        print(data.keys())
         for file in data:
-            print("XX")
             out = ""
             out += ",".join(data[file]["header"]) + "\n"
             out += pd.DataFrame(data[file]["content"]).to_csv(index=False)
             files[file] = out
-            print(file)
 
         return dict_to_zip(files)

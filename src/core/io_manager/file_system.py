@@ -92,5 +92,7 @@ class FileSystemIOManager(IOManager):
 
     @contextlib.contextmanager
     def get_append_context(self, collection_name: str, fragment_uuid: str):
-        with self.get_fragment_context(collection_name, fragment_uuid, "ab+") as context:
+        with self.get_fragment_context(
+            collection_name, fragment_uuid, "ab+"
+        ) as context:
             yield context

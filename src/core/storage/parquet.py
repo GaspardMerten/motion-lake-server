@@ -7,12 +7,11 @@ from typing import List, Tuple
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from pyarrow import ArrowInvalid
+from pyarrow import ArrowInvalid, ArrowNotImplementedError
 
 from src.core.models import DataType
 from src.core.storage.parsers.base import MissMatchingTypes
 from src.core.storage.parsers.bytes_parser import BytesParser
-from src.core.storage.parsers.gtfs_parser import GTFSParser
 from src.core.storage.parsers.gtfs_rt_parser import GTFSRTParser
 from src.core.storage.parsers.json_parser import JSONParser
 from src.core.utils.exception import AnotherWorldException
@@ -21,7 +20,7 @@ MAPPING = {
     DataType.RAW: BytesParser(),
     DataType.JSON: JSONParser(),
     DataType.GTFS_RT: GTFSRTParser(),
-    #DataType.GTFS: GTFSParser(),
+    # DataType.GTFS: GTFSParser(),
 }
 
 
@@ -95,7 +94,7 @@ class ParquetDynamicStorage:
             table = pa.Table.from_arrays(
                 arrays=[
                     pa.array([item[0] for item in parsed_data]),
-                    pa.array([item[1] for item in parsed_data]),
+                    pa.array([int(item[1]) for item in parsed_data]),
                 ],
                 schema=pa.schema(
                     [
@@ -106,7 +105,7 @@ class ParquetDynamicStorage:
                     ]
                 ),
             )
-        except ArrowInvalid as e:
+        except (ArrowInvalid, ArrowNotImplementedError) as e:
             if data_type == DataType.RAW:
                 raise AnotherWorldException(
                     "Cannot write raw data to parquet, even if it's not parsed"
@@ -186,5 +185,5 @@ class ParquetDynamicStorage:
                     row["timestamp"],
                 )
             )
-        print("XX")
+
         return filtered_data

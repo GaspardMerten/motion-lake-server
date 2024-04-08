@@ -13,19 +13,6 @@ services:
     volumes:
       - PG_DATA:/var/lib/postgresql/data
 
-  server:
-    build: .
-    container_name: server
-    environment:
-      DB_URL: "postgresql://postgres:postgres@postgres:5432/postgres"
-      THREADS: 4
-      HOST_IP: "0.0.0.0"
-    depends_on:
-      - postgres
-    ports:
-      - "8000:8000"
-    volumes:
-      - SERVER_DATA:/app/storage
 
 volumes:
   PG_DATA:

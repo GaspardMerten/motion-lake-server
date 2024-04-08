@@ -3,15 +3,24 @@
 
 import uuid
 from datetime import datetime
-from functools import lru_cache
+from functools import wraps
 from typing import Tuple, List
 
 from sqlalchemy import create_engine, func
 from sqlalchemy.exc import IntegrityError, NoResultFound
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.core.tables import Base, Collection, BufferedFragment, Fragment, Item
 from src.core.utils.exception import AnotherWorldException
+
+
+def with_session(func_to_wrap):
+    @wraps(func_to_wrap)
+    def wrapper(self, *args, **kwargs):
+        with self.session_maker.begin() as session:
+            return func_to_wrap(self, session, *args, **kwargs)
+
+    return wrapper
 
 
 class PersistenceManager:
@@ -25,7 +34,9 @@ class PersistenceManager:
         # Create sqlite engine (make it read and write (force it to be read and write))
         self.engine = create_engine(db_url)
         self._create_tables()
-        self.session = Session(self.engine, expire_on_commit=False, autocommit=False)
+        self.session_maker = sessionmaker(
+            self.engine, expire_on_commit=False, autoflush=True
+        )
 
     def _create_tables(self) -> None:
         """
@@ -34,8 +45,9 @@ class PersistenceManager:
 
         Base.metadata.create_all(self.engine)
 
+    @with_session
     def create_collection(
-        self, collection_name: str, allow_existing: bool = False
+        self, session: Session, collection_name: str, allow_existing: bool = False
     ) -> None:
         """
         Create a new collection with the given name.
@@ -47,11 +59,10 @@ class PersistenceManager:
 
         try:
             collection = Collection(name=collection_name)
-            self.session.add(collection)
-            self.session.commit()
+            session.add(collection)
+            session.commit()
         except IntegrityError:
             # If the collection already exists, rollback the transaction
-            self.session.rollback()
 
             if not allow_existing:
                 # If the collection already exists, and we do not allow it, raise an exception
@@ -59,7 +70,8 @@ class PersistenceManager:
                     f"Collection {collection_name} already exists"
                 )
 
-    def get_collections(self) -> List[dict]:
+    @with_session
+    def get_collections(self, session: Session) -> List[dict]:
         """
         Get all collections in the database.
         :return: A list of collections
@@ -68,7 +80,7 @@ class PersistenceManager:
         # Create an aggregate query to get all collections + add min/max timestamp and count
         # noinspection PyTypeChecker
         results = (
-            self.session.query(
+            session.query(
                 Collection,
                 func.min(Item.timestamp).label("min_timestamp"),
                 func.max(Item.timestamp).label("max_timestamp"),
@@ -78,17 +90,55 @@ class PersistenceManager:
             .group_by(Collection.id)
             .all()
         )
-        return [
-            {
-                "name": collection.name,
-                "min_timestamp": min_timestamp,
-                "max_timestamp": max_timestamp,
-                "count": count,
-            }
-            for collection, min_timestamp, max_timestamp, count in results
-        ]
 
-    def get_collections_with_active_buffer(self) -> List[Collection]:
+        buffer_stat = self.get_collections_buffer_stat()
+
+        # Create a list of dictionaries with the collection name, min/max timestamp, and count
+        collections = []
+
+        for collection, min_timestamp, max_timestamp, count in results:
+            min_timestamps = [min_timestamp] if min_timestamp is not None else []
+            min_timestamps.append(
+                buffer_stat.get(collection.id, {}).get("min_timestamp", None)
+            )
+
+            max_timestamps = [max_timestamp] if max_timestamp is not None else []
+            max_timestamps.append(
+                buffer_stat.get(collection.id, {}).get("max_timestamp", None)
+            )
+
+            min_timestamp = min(filter(None, min_timestamps))
+            max_timestamp = max(filter(None, max_timestamps))
+
+            collections.append(
+                {
+                    "name": collection.name,
+                    "min_timestamp": min_timestamp,
+                    "max_timestamp": max_timestamp,
+                    "count": count + buffer_stat.get(collection.id, {}).get("count", 0),
+                }
+            )
+
+        return collections
+
+    @with_session
+    def get_collections_buffer_stat(self, session: Session) -> dict:
+        buffer_stat = {}
+        for buffer in session.query(BufferedFragment).all():
+            buffer_stat[buffer.collection_id] = {
+                "min_timestamp": datetime.fromtimestamp(
+                    min([segment[2] for segment in buffer.segments] or [0])
+                ),
+                "max_timestamp": datetime.fromtimestamp(
+                    max([segment[2] for segment in buffer.segments] or [0])
+                ),
+                "count": len(buffer.segments),
+            }
+
+        return buffer_stat
+
+    @with_session
+    def get_collections_with_active_buffer(self, session) -> List[Collection]:
         """
         Get all collections with an active buffer.
         :return: A list of collections with an active buffer
@@ -96,14 +146,16 @@ class PersistenceManager:
 
         # noinspection PyTypeChecker
         return (
-            self.session.query(Collection)
+            session.query(Collection)
             .join(BufferedFragment)
             .filter(BufferedFragment.collection_id == Collection.id)
             .all()
         )
 
-    @lru_cache(maxsize=128)
-    def get_collection_by_name(self, collection_name: str) -> Collection:
+    @with_session
+    def get_collection_by_name(
+        self, session: Session, collection_name: str
+    ) -> Collection:
         """
         Get a collection by its name.
         :param collection_name: The name of the collection to get
@@ -112,11 +164,14 @@ class PersistenceManager:
 
         try:
             # noinspection PyTypeChecker
-            return self.session.query(Collection).filter_by(name=collection_name).one()
+            return session.query(Collection).filter_by(name=collection_name).one()
         except NoResultFound:
             raise AnotherWorldException(f"Collection {collection_name} does not exist")
 
-    def get_buffered_fragment(self, collection: Collection | str) -> BufferedFragment:
+    @with_session
+    def get_buffered_fragment(
+        self, session: Session, collection: Collection | str
+    ) -> BufferedFragment:
         """
         Get the buffered fragment for the given collection.
         :param collection: The collection to get the buffered fragment for
@@ -128,16 +183,18 @@ class PersistenceManager:
 
         # noinspection PyTypeChecker
         return (
-            self.session.query(BufferedFragment)
+            session.query(BufferedFragment)
             .filter_by(collection_id=collection.id)
             .one_or_none()
         )
 
+    @with_session
     def append_segments_to_buffer_fragment(
-        self, collection_name: str, segments: Tuple[int, int, str]
+        self, session: Session, collection_name: str, segments: Tuple[int, int, int]
     ) -> int:
         """
         Append segments to the buffered fragment for the given collection.
+        :param session: The session to use
         :param collection_name: The name of the collection to append the segments to
         :param segments: The segments to append to the buffered fragment
         :return: The number of segments in the buffered fragment
@@ -155,17 +212,18 @@ class PersistenceManager:
                 collection_id=collection.id, segments=[]
             )
 
-            self.session.add(buffered_fragment)
+            session.add(buffered_fragment)
 
         # Append the segments to the buffered fragment
         buffered_fragment.segments = buffered_fragment.segments + [segments]
 
-        # Commit the transaction
-        self.session.commit()
+        # Associate the buffered fragment to the current session
+        session.add(buffered_fragment)
 
         return len(buffered_fragment.segments)
 
-    def has_buffered_fragment(self, collection_name: str) -> bool:
+    @with_session
+    def has_buffered_fragment(self, session: Session, collection_name: str) -> bool:
         """
         Check if the collection has a buffered fragment.
         :param collection_name: The name of the collection to check
@@ -174,14 +232,15 @@ class PersistenceManager:
 
         collection = self.get_collection_by_name(collection_name)
         return (
-            self.session.query(BufferedFragment)
+            session.query(BufferedFragment)
             .filter_by(collection_id=collection.id)
             .one_or_none()
             is not None
         )
 
+    @with_session
     def associate_new_fragment_to_buffer(
-        self, collection_name: str
+        self, session: Session, collection_name: str
     ) -> Tuple[List, str]:
         """
         Associate a new fragment to the buffered fragment for the given collection.
@@ -194,7 +253,7 @@ class PersistenceManager:
 
         # Get the buffered fragment
         buffered_fragment = (
-            self.session.query(BufferedFragment)
+            session.query(BufferedFragment)
             .filter_by(collection_id=collection.id)
             .one_or_none()
         )
@@ -210,17 +269,16 @@ class PersistenceManager:
             collection_id=buffered_fragment.collection_id, uuid=str(uuid.uuid4())
         )
 
-        self.session.add(fragment)
-        self.session.commit()
-
+        session.add(fragment)
         # Associate the new fragment to the buffered fragment
         buffered_fragment.associated_fragment = fragment
-        self.session.commit()
+        session.commit()
 
         return buffered_fragment.segments, fragment.uuid
 
+    @with_session
     def remove_buffered_fragment_and_create_items(
-        self, collection_name: str, metadata: dict
+        self, session: Session, collection_name: str, metadata: dict
     ):
         """
         Remove the buffered fragment and create items for the given collection.
@@ -234,7 +292,7 @@ class PersistenceManager:
         collection = self.get_collection_by_name(collection_name)
         # Get the buffered fragment
         buffered_fragment = (
-            self.session.query(BufferedFragment)
+            session.query(BufferedFragment)
             .filter_by(collection_id=collection.id)
             .one_or_none()
         )
@@ -247,25 +305,27 @@ class PersistenceManager:
             Item(
                 fragment_id=buffered_fragment.associated_fragment.id,
                 collection_id=buffered_fragment.collection_id,
-                timestamp=datetime.fromisoformat(segment[2]),
+                timestamp=datetime.fromtimestamp(segment[2]),
             )
             for segment in buffered_fragment.segments
         ]
 
         # Add the items to the database
-        self.session.add_all(items)
+        session.add_all(items)
 
         # Associate the metadata to the fragment
         buffered_fragment.associated_fragment.internal_metadata = metadata
 
         # Remove the buffered fragment
-        self.session.delete(buffered_fragment)
+        session.delete(buffered_fragment)
 
         # Commit the whole transaction
-        self.session.commit()
+        session.commit()
 
+    @with_session
     def query(
         self,
+        session: Session,
         collection: Collection,
         min_timestamp: datetime,
         max_timestamp: datetime,
@@ -284,7 +344,7 @@ class PersistenceManager:
         :param offset: The offset of the items to retrieve
         :return: The list of fragments in the collection with the given name
         """
-        query = self.session.query(Item).filter(
+        query = session.query(Item).filter(
             Item.collection_id == collection.id,
             Item.timestamp >= min_timestamp,
             Item.timestamp <= max_timestamp,
@@ -299,7 +359,7 @@ class PersistenceManager:
 
         # Query the fragments
         fragments = (
-            self.session.query(Fragment)
+            session.query(Fragment)
             .filter(Fragment.id.in_([result.fragment_id for result in results]))
             .all()
         )

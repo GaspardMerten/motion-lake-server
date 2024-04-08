@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import List, Tuple
 
 from filelock import FileLock
-from pandas import Timestamp
 
 from src.core.constants import BUFFER
 from src.core.io_manager.base import IOManager
@@ -14,16 +13,17 @@ from src.core.mixins.loggable import LoggableComponent
 from src.core.models import DataType
 from src.core.persistence import PersistenceManager
 from src.core.storage.base import InternalStorageManager
-from src.core.tables import Collection
 from src.core.utils.exception import AnotherWorldException
+
+DEFAULT_BUFFER_SIZE = 100 * 1024 * 1024  # 100MB
 
 
 class Engine(LoggableComponent):
     def __init__(
-            self,
-            io_manager: IOManager,
-            persistence_manager: PersistenceManager,
-            internal_storage: InternalStorageManager,
+        self,
+        io_manager: IOManager,
+        persistence_manager: PersistenceManager,
+        internal_storage: InternalStorageManager,
     ):
         super().__init__()
         self.internal_storage = internal_storage
@@ -39,7 +39,7 @@ class Engine(LoggableComponent):
             with self.startup_lock.acquire(blocking=False):
                 self.log("Checking for storage integrity, acquiring lock")
                 for (
-                        collection
+                    collection
                 ) in self.persistence_manager.get_collections_with_active_buffer():
                     self.log_warning(
                         f"Collection {collection.name} has an active buffer, flushing it"
@@ -76,8 +76,12 @@ class Engine(LoggableComponent):
         return self.persistence_manager.get_collections()
 
     def store(
-            self, collection_name: str, timestamp: datetime, data: bytes, data_type=None,
-            create_collection: bool = False
+        self,
+        collection_name: str,
+        timestamp: datetime,
+        data: bytes,
+        data_type=None,
+        create_collection: bool = False,
     ):
         """
         Store the given data in the collection with the given name. The data will be stored in a
@@ -98,6 +102,7 @@ class Engine(LoggableComponent):
             try:
                 self.persistence_manager.get_collection_by_name(collection_name)
             except AnotherWorldException:
+
                 self.create_collection(collection_name)
 
         # Append the segment to the buffered fragment
@@ -112,12 +117,12 @@ class Engine(LoggableComponent):
             (
                 current_size,
                 current_size + len(data),
-                timestamp.isoformat(),
+                int(timestamp.timestamp()),
             ),
         )
 
-        if (
-                self.io_manager.get_size(collection_name, BUFFER) > 500 * 1024 * 1024
+        if self.io_manager.get_size(collection_name, BUFFER) > os.environ.get(
+            "BUFFER_SIZE", DEFAULT_BUFFER_SIZE
         ):  # 500MB
             self.flush(collection_name, data_type)
 
@@ -144,12 +149,12 @@ class Engine(LoggableComponent):
         # Write the data in the buffered fragment to the new fragment
         with self.io_manager.get_read_context(collection_name, BUFFER) as f:
             with self.io_manager.get_write_context(
-                    collection_name, associated_fragment_uuid
+                collection_name, associated_fragment_uuid
             ) as output:
                 # Read and Split the data
                 data = f.read()
                 items = [
-                    (data[segment[0]: segment[1]], segment[2]) for segment in segments
+                    (data[segment[0] : segment[1]], segment[2]) for segment in segments
                 ]
                 # Write the data
                 metadata = self.internal_storage.write(items, output, data_type)
@@ -169,13 +174,13 @@ class Engine(LoggableComponent):
         return True
 
     def query(
-            self,
-            collection_name: str,
-            min_timestamp: datetime,
-            max_timestamp: datetime,
-            ascending: bool = True,
-            limit: int = None,
-            offset: int = None,
+        self,
+        collection_name: str,
+        min_timestamp: datetime,
+        max_timestamp: datetime,
+        ascending: bool = True,
+        limit: int = None,
+        offset: int = None,
     ) -> List[Tuple[bytes, datetime]]:
         """
         Query the data in the collection with the given name. The data will be filtered using the
@@ -207,7 +212,6 @@ class Engine(LoggableComponent):
 
         # Sort the result by timestamp
         result.sort(key=lambda x: x[1], reverse=not ascending)
-
         self.log(
             f"Querying data in collection {collection_name}, found {len(result)} items, ascending={ascending}, limit="
             f"{limit}, min_timestamp={min_timestamp}, max_timestamp={max_timestamp}"
@@ -234,15 +238,15 @@ class Engine(LoggableComponent):
             data = f.read()
 
             items = [
-                (data[segment[0]: segment[1]], Timestamp(segment[2]))
+                (data[segment[0] : segment[1]], datetime.fromtimestamp(segment[2]))
                 for segment in segments
-                if min_timestamp <= datetime.fromisoformat(segment[2]) <= max_timestamp
+                if min_timestamp <= datetime.fromtimestamp(segment[2]) <= max_timestamp
             ]
 
         return items
 
     def _get_fragment_items(
-            self, collection, fragment, min_timestamp, max_timestamp, ascending, limit
+        self, collection, fragment, min_timestamp, max_timestamp, ascending, limit
     ) -> List[Tuple[bytes, datetime]]:
         with self.io_manager.get_read_context(collection.name, fragment.uuid) as f:
             result = self.internal_storage.read(
@@ -252,5 +256,4 @@ class Engine(LoggableComponent):
                 order_by=["timestamp" if ascending else "timestamp desc"],
                 limit=limit,
             )
-
             return result

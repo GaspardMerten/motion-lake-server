@@ -16,7 +16,7 @@ class InternalStorageManager(Protocol):
 
     def write(
         self,
-        data: List[Tuple[bytes, datetime]],
+        data: List[Tuple[bytes, int]],
         output: BytesIO,
         content_type: List[str] = None,
     ) -> dict:

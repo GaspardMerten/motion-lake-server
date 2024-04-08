@@ -1,21 +1,11 @@
-
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
 
-import contextlib
-import os
-import random
-import re
-import uuid
-from datetime import datetime
-from io import BytesIO
-from typing import List, Tuple, Protocol
+from typing import List, Tuple
 
-import gzip
-from sqlalchemy import ForeignKey, DateTime, create_engine, JSON
+from sqlalchemy import ForeignKey, DateTime, JSON
 from sqlalchemy import String
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import DeclarativeBase, Session, relationship
+from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 
@@ -50,7 +40,7 @@ class BufferedFragment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"), unique=True)
-    segments: Mapped[List[Tuple[int, int, str]]] = mapped_column(JSON)
+    segments: Mapped[List[Tuple[int, int, int]]] = mapped_column(JSON)
     fragment_id: Mapped[int] = mapped_column(
         ForeignKey("fragment.id", ondelete="SET NULL"), nullable=True
     )
@@ -64,5 +54,7 @@ class Item(Base):
     __tablename__ = "item"
 
     fragment_id: Mapped[int] = mapped_column(ForeignKey("fragment.id"))
-    collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"))
+    collection_id: Mapped[int] = mapped_column(
+        ForeignKey("collection.id"), primary_key=True
+    )
     timestamp: Mapped[str] = mapped_column(DateTime, primary_key=True)
