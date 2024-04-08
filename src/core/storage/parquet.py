@@ -46,8 +46,8 @@ class ParquetDynamicStorage:
         :param settings: The settings to use
             - compression: The compression to use (default: snappy)
         """
-        self.compression = settings.get("compression", "snappy")
-        self.compression_level = settings.get("compression_level", "snappy")
+        self.compression = settings.get("compression", "gzip")
+        self.compression_level = settings.get("compression_level", "9")
 
     def write(
         self,
@@ -94,14 +94,14 @@ class ParquetDynamicStorage:
             table = pa.Table.from_arrays(
                 arrays=[
                     pa.array([item[0] for item in parsed_data]),
-                    pa.array([int(item[1]) for item in parsed_data]),
+                    pa.array([item[1] for item in parsed_data]),
                 ],
                 schema=pa.schema(
                     [
                         pa.field(
                             "data", pa.infer_type([item[0] for item in parsed_data])
                         ),
-                        pa.field("timestamp", pa.timestamp("ns")),
+                        pa.field("timestamp", pa.int64()),
                     ]
                 ),
             )
@@ -161,9 +161,9 @@ class ParquetDynamicStorage:
         table_filters = []
 
         if "min_timestamp" in where:
-            table_filters.append(("timestamp", ">=", where["min_timestamp"]))
+            table_filters.append(("timestamp", ">=", int(where["min_timestamp"].timestamp())))
         if "max_timestamp" in where:
-            table_filters.append(("timestamp", "<=", where["max_timestamp"]))
+            table_filters.append(("timestamp", "<=", int(where["max_timestamp"].timestamp())))
 
         table = pq.read_table(reader, filters=table_filters)
 

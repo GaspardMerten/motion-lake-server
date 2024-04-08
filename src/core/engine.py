@@ -192,13 +192,13 @@ class Engine(LoggableComponent):
         :param offset: The offset of the data to retrieve
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
-
         collection = self.persistence_manager.get_collection_by_name(collection_name)
-
         fragments = self.persistence_manager.query(
             collection, min_timestamp, max_timestamp, ascending, limit
         )
+
         result = []
+
         for fragment in fragments:
             result.extend(
                 self._get_fragment_items(
@@ -212,6 +212,7 @@ class Engine(LoggableComponent):
 
         # Sort the result by timestamp
         result.sort(key=lambda x: x[1], reverse=not ascending)
+
         self.log(
             f"Querying data in collection {collection_name}, found {len(result)} items, ascending={ascending}, limit="
             f"{limit}, min_timestamp={min_timestamp}, max_timestamp={max_timestamp}"
@@ -238,7 +239,7 @@ class Engine(LoggableComponent):
             data = f.read()
 
             items = [
-                (data[segment[0] : segment[1]], datetime.fromtimestamp(segment[2]))
+                (data[segment[0] : segment[1]], segment[2])
                 for segment in segments
                 if min_timestamp <= datetime.fromtimestamp(segment[2]) <= max_timestamp
             ]

@@ -69,7 +69,7 @@ async def query_collection(
         return {"results": [], "error": str(e)}
 
     formatted_results = [
-        {"data": result[0], "timestamp": int(result[1].timestamp())}
+        {"data": result[0], "timestamp": result[1]}
         for result in results
     ]
 

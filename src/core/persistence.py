@@ -107,8 +107,8 @@ class PersistenceManager:
                 buffer_stat.get(collection.id, {}).get("max_timestamp", None)
             )
 
-            min_timestamp = min(filter(None, min_timestamps))
-            max_timestamp = max(filter(None, max_timestamps))
+            min_timestamp = min(list(filter(None, min_timestamps)) or [None])
+            max_timestamp = max(list(filter(None, max_timestamps)) or [None])
 
             collections.append(
                 {
@@ -354,6 +354,7 @@ class PersistenceManager:
             query = query.order_by(Item.timestamp)
         else:
             query = query.order_by(Item.timestamp.desc())
+
 
         results = query.limit(limit).all()
 
