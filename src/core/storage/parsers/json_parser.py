@@ -3,7 +3,7 @@
 
 import json
 
-from src.core.storage.parsers.base import BaseParser, MissMatchingTypes
+from src.core.storage.parsers.base import BaseParser, MissMatchingTypesException
 from src.core.utils.numpy_json import NumpyEncoder
 
 
@@ -12,9 +12,9 @@ class JSONParser(BaseParser):
         try:
             return json.loads(data)
         except json.JSONDecodeError:
-            raise MissMatchingTypes()
+            raise MissMatchingTypesException()
         except UnicodeError:
-            raise MissMatchingTypes()
+            raise MissMatchingTypesException()
 
     def serialize(self, data: dict) -> bytes:
         return json.dumps(data, cls=NumpyEncoder).encode()

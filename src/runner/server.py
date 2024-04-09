@@ -132,8 +132,8 @@ async def store_data(request: StoreRequest, collection_name: str):
         core.store(
             collection_name,
             timestamp,
-            request.data,
-            data_type=DataType(request.content_type) if request.content_type else None,
+            bytes.fromhex(request.data.decode()),
+            data_type=DataType(request.content_type) if request.content_type is not None else None,
             create_collection=request.create_collection,
         )
     except AnotherWorldException as e:

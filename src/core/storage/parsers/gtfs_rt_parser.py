@@ -8,7 +8,7 @@ from google.protobuf.json_format import MessageToDict, SerializeToJsonError
 from google.protobuf.message import DecodeError
 from google.transit import gtfs_realtime_pb2
 
-from src.core.storage.parsers.base import BaseParser, MissMatchingTypes
+from src.core.storage.parsers.base import BaseParser, MissMatchingTypesException
 from src.core.utils.numpy_json import NumpyEncoder
 
 
@@ -19,8 +19,8 @@ class GTFSRTParser(BaseParser):
             feed = gtfs_realtime_pb2.FeedMessage()
             feed.ParseFromString(data)
             return MessageToDict(feed)
-        except DecodeError | SerializeToJsonError:
-            raise MissMatchingTypes()
+        except (DecodeError, SerializeToJsonError) as e:
+            raise MissMatchingTypesException()
 
     def serialize(self, data: bytes | str | object) -> bytes:
         # noinspection PyUnresolvedReferences

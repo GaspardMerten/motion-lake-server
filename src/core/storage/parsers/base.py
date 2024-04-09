@@ -6,7 +6,7 @@ from typing import Protocol
 from src.core.utils.exception import AnotherWorldException
 
 
-class MissMatchingTypes(AnotherWorldException):
+class MissMatchingTypesException(Exception):
     pass
 
 

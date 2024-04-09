@@ -48,8 +48,9 @@ class Engine(LoggableComponent):
                         self.flush(collection.name)
                     except Exception as e:
                         self.log_error(
-                            f"Error flushing buffer for collection {collection.name}: {e}"
+                            f"Failed to flush buffer for collection {collection.name}, {e}"
                         )
+
         except TimeoutError:
             self.log_warning(
                 "Startup lock already acquired, skipping storage integrity check"
@@ -118,15 +119,16 @@ class Engine(LoggableComponent):
                 current_size,
                 current_size + len(data),
                 int(timestamp.timestamp()),
+                data_type.value if data_type is not None else None,
             ),
         )
 
         if self.io_manager.get_size(collection_name, BUFFER) > os.environ.get(
             "BUFFER_SIZE", DEFAULT_BUFFER_SIZE
         ):  # 500MB
-            self.flush(collection_name, data_type)
+            self.flush(collection_name)
 
-    def flush(self, collection_name: str, data_type: DataType = None) -> bool:
+    def flush(self, collection_name: str) -> bool:
         """
         Flush the buffered data to a new fragment. The data will be written to a new fragment and
         the buffered fragment will be removed. An optional data type can be provided to specify the
@@ -145,6 +147,12 @@ class Engine(LoggableComponent):
         segments, associated_fragment_uuid = (
             self.persistence_manager.associate_new_fragment_to_buffer(collection_name)
         )
+        data_types = [segment[3] for segment in segments]
+
+        if len(set(data_types)) > 1:
+            data_type = DataType.RAW
+        else:
+            data_type = DataType(data_types[0]) if data_types[0] is not None else None
 
         # Write the data in the buffered fragment to the new fragment
         with self.io_manager.get_read_context(collection_name, BUFFER) as f:

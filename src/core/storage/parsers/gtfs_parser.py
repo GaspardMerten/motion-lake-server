@@ -5,7 +5,7 @@ from typing import List, Dict
 
 import pandas as pd
 
-from src.core.storage.parsers.base import BaseParser, MissMatchingTypes
+from src.core.storage.parsers.base import BaseParser, MissMatchingTypesException
 from src.core.utils.zip_tools import zip_to_dict, dict_to_zip
 
 
@@ -74,7 +74,7 @@ class GTFSParser(BaseParser):
             return out
         except Exception as e:
             print("Error while parsing GTFS data:", e)
-            raise MissMatchingTypes()
+            raise MissMatchingTypesException()
 
     def serialize(self, data: dict) -> bytes:
         files = {}

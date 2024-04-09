@@ -1,6 +1,6 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
-from src.core.storage.parsers.base import BaseParser, MissMatchingTypes
+from src.core.storage.parsers.base import BaseParser, MissMatchingTypesException
 
 
 class BytesParser(BaseParser):
@@ -8,7 +8,7 @@ class BytesParser(BaseParser):
         if isinstance(data, bytes):
             return data
 
-        raise MissMatchingTypes()
+        raise MissMatchingTypesException()
 
     def serialize(self, data: bytes | str | object) -> bytes:
         return data
