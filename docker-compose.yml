@@ -16,6 +16,6 @@ services:
 
 volumes:
   PG_DATA:
-  SERVER_DATA:
+
 
 

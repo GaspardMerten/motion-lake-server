@@ -40,6 +40,12 @@ def main():
         default=os.environ.get("HOST_IP", "127.0.0.1"),
         help="IP address to run the FastAPI app, default is 127.0.0.1",
     )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=os.environ.get("LOG_LEVEL", "INFO"),
+        help="Logging level, default is INFO",
+    )
 
     args = parser.parse_args()
 
@@ -47,8 +53,8 @@ def main():
     os.environ["STORAGE_PATH"] = args.storage_folder
 
     # set global logging level
-    logging.basicConfig(level=logging.INFO)
-
+    logging.basicConfig(level=logging.getLevelName(args.log_level))
+    
     logging.info(f"Running FastAPI app on {args.ip}:{args.port} with {args.threads} threads using {args.db_url} and {args.storage_folder}")
 
     # Running the FastAPI app with Uvicorn

@@ -266,3 +266,30 @@ class Engine(LoggableComponent):
                 limit=limit,
             )
             return result
+
+    def advanced_query(
+        self,
+        collection_name: str,
+        query: str,
+        min_timestamp: datetime,
+        max_timestamp: datetime,
+    ):
+        """
+        Perform an advanced query on the given collection.
+        :param collection_name: The name of the collection to query
+        :param query: The query to perform
+        :param min_timestamp: The minimum timestamp to filter the data
+        :param max_timestamp: The maximum timestamp to filter the data
+        :return: The data in the collection as a list of tuples of bytes and datetime
+        """
+
+        collection = self.persistence_manager.get_collection_by_name(collection_name)
+        fragments = self.persistence_manager.query(
+            collection, min_timestamp, max_timestamp, True, data_types=[DataType.JSON, DataType.GTFS_RT]
+        )
+        paths = [
+            self.io_manager.get_fragment_path(collection.name, fragment.uuid)
+            for fragment in fragments
+        ]
+
+        return self.internal_storage.advanced_query(paths, query, min_timestamp, max_timestamp)

@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, sessionmaker
 
+from src.core.models import DataType
 from src.core.tables import Base, Collection, BufferedFragment, Fragment, Item
 from src.core.utils.exception import AnotherWorldException
 
@@ -315,6 +316,7 @@ class PersistenceManager:
 
         # Associate the metadata to the fragment
         buffered_fragment.associated_fragment.internal_metadata = metadata
+        buffered_fragment.associated_fragment.data_type = metadata["data_type"]
 
         # Remove the buffered fragment
         session.delete(buffered_fragment)
@@ -331,6 +333,7 @@ class PersistenceManager:
         max_timestamp: datetime,
         ascending: bool,
         limit: int = None,
+        data_types: List[DataType] = None,
     ) -> List[Fragment]:
         """
         Retrieve the data at the given timestamp from the collection with the given name. The data
@@ -342,6 +345,7 @@ class PersistenceManager:
         :param ascending: Whether to retrieve the data in ascending order
         :param limit: The maximum number of items to retrieve
         :param offset: The offset of the items to retrieve
+        :param data_types: The data types to filter the data with
         :return: The list of fragments in the collection with the given name
         """
         query = session.query(Item).filter(
@@ -355,15 +359,17 @@ class PersistenceManager:
         else:
             query = query.order_by(Item.timestamp.desc())
 
-
         results = query.limit(limit).all()
 
         # Query the fragments
-        fragments = (
-            session.query(Fragment)
-            .filter(Fragment.id.in_([result.fragment_id for result in results]))
-            .all()
+        fragments = session.query(Fragment).filter(
+            Fragment.id.in_([result.fragment_id for result in results])
         )
 
+        if data_types and isinstance(data_types, list):
+            fragments = fragments.filter(
+                Fragment.data_type.in_([data_type.value for data_type in data_types])
+            )
+
         # noinspection PyTypeChecker
-        return fragments
+        return fragments.all()

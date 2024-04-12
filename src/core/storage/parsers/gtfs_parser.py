@@ -73,7 +73,6 @@ class GTFSParser(BaseParser):
 
             return out
         except Exception as e:
-            print("Error while parsing GTFS data:", e)
             raise MissMatchingTypesException()
 
     def serialize(self, data: dict) -> bytes:

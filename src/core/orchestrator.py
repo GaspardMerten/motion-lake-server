@@ -124,3 +124,15 @@ class Orchestrator(LoggableComponent):
         """
 
         return self._engine.flush(collection_name)
+
+    def advanced_query(self, collection_name: str, query: str, min_timestamp: datetime, max_timestamp: datetime):
+        """
+        Perform an advanced query on the given collection.
+        :param collection_name: The name of the collection to query
+        :param query: The query to perform
+        :param min_timestamp: The minimum timestamp to filter the data
+        :param max_timestamp: The maximum timestamp to filter the data
+        :return: The data in the collection as a list of tuples of bytes and datetime
+        """
+
+        return self._engine.advanced_query(collection_name, query, min_timestamp, max_timestamp)

@@ -5,6 +5,7 @@ from typing import List, Tuple
 
 from sqlalchemy import ForeignKey, DateTime, JSON
 from sqlalchemy import String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -28,7 +29,8 @@ class Fragment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     uuid: Mapped[str] = mapped_column()
-    internal_metadata: Mapped[dict] = mapped_column(JSON, nullable=True)
+    data_type: Mapped[int] = mapped_column(nullable=True)
+    internal_metadata: Mapped[dict] = mapped_column(JSONB, nullable=True)
     collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"))
 
     def __repr__(self) -> str:
@@ -40,7 +42,7 @@ class BufferedFragment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"), unique=True)
-    segments: Mapped[List[Tuple[int, int, int]]] = mapped_column(JSON)
+    segments: Mapped[List[Tuple[int, int, int]]] = mapped_column(JSONB)
     fragment_id: Mapped[int] = mapped_column(
         ForeignKey("fragment.id", ondelete="SET NULL"), nullable=True
     )

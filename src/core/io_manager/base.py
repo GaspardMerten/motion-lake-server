@@ -65,3 +65,13 @@ class IOManager(Protocol):
         :return: A context manager that yields a fragment-like object
         """
         ...
+
+    def get_fragment_path(self, collection_name: str, fragment_uuid: str) -> str:
+        """
+        This method should return the path to the fragment corresponding to the given fragment UUID.
+
+        :param collection_name: The name of the collection
+        :param fragment_uuid: The UUID of the fragment
+        :return: The path to the fragment
+        """
+        ...

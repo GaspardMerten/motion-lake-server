@@ -1,0 +1,42 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "motion-lake-server"
+version = "0.0.1"
+description = "Motion Lake Server, the Mobility Data Lake server for your multi-model mobility data, from GTFS-RT to GeoJSON. DuckDB querying capabilities."
+readme = "README.md"
+authors = [{ name = "Gaspard Merten", email = "gaspard.mp.work@gmail.com" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["motion-lake", "mobility", "data", "api", "server", "parquet", "duckdb", "gtfs-rt", "geojson", "multi-model", "data-lake", "data-warehouse", "data-engineering", "data-science", "data-analysis", "data-visualization", "data-analytics", "data-querying", "data-processing", "data-warehousing"]
+dependencies = [
+    "SQLAlchemy",
+    "pyarrow",
+    "gtfs-realtime-bindings",
+    "numpy",
+    "fastapi",
+    "matplotlib",
+    "requests",
+    "uvicorn",
+    "pandas",
+    "starlette",
+    "aiosqlite",
+    "psycopg2-binary",
+    "filelock",
+    "pydantic",
+    "duckdb"
+]
+requires-python = ">=3.9"
+
+
+[project.urls]
+Homepage = "https://github.com/GaspardMerten/motion-lake-server"
+

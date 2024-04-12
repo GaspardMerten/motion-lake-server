@@ -69,7 +69,7 @@ async def query_collection(
         return {"results": [], "error": str(e)}
 
     formatted_results = [
-        {"data": result[0], "timestamp": result[1]}
+        {"data": result[0].hex(), "timestamp": result[1]}
         for result in results
     ]
 
@@ -112,7 +112,7 @@ async def create_collection(collection: CollectionRequest):
 
 class StoreRequest(BaseModel):
     timestamp: int | float
-    data: bytes
+    data: str
     content_type: int | None
     create_collection: bool = False
 
@@ -132,7 +132,7 @@ async def store_data(request: StoreRequest, collection_name: str):
         core.store(
             collection_name,
             timestamp,
-            bytes.fromhex(request.data.decode()),
+            bytes.fromhex(request.data),
             data_type=DataType(request.content_type) if request.content_type is not None else None,
             create_collection=request.create_collection,
         )
@@ -140,3 +140,27 @@ async def store_data(request: StoreRequest, collection_name: str):
         return {"error": str(e)}
 
     return {"message": "Data stored successfully"}
+
+class AdvancedQueryRequest(BaseModel):
+    min_timestamp: int
+    max_timestamp: int
+    query: str
+
+@app.post("/advanced/{collection_name}/")
+async def advanced_query(request: AdvancedQueryRequest, collection_name: str):
+    """
+    Perform an advanced query on the given collection.
+    :param request: The request body
+    :param collection_name: The name of the collection to query
+    :return: The results of the query
+    """
+    # Convert timestamps to datetime
+    min_timestamp = datetime.fromtimestamp(request.min_timestamp/1000)
+    max_timestamp = datetime.fromtimestamp(request.max_timestamp/1000)
+
+    try:
+        results = core.advanced_query(collection_name, request.query, min_timestamp, max_timestamp)
+    except AnotherWorldException as e:
+        return {"results": [], "error": str(e)}
+
+    return {"results": results}

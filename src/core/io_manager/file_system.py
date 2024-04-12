@@ -96,3 +96,6 @@ class FileSystemIOManager(IOManager):
             collection_name, fragment_uuid, "ab+"
         ) as context:
             yield context
+
+    def get_fragment_path(self, collection_name: str, fragment_uuid: str) -> str:
+        return os.path.join(self.storage_folder, collection_name, fragment_uuid)

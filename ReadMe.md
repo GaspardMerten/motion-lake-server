@@ -9,6 +9,3 @@ relies on the [Apache Parquet](https://parquet.apache.org/) file format.
 - Efficient storage and retrieval of large amounts of mobility data
 - Support for various mobility data formats
 
-## Installation
-
-
