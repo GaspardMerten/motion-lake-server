@@ -98,6 +98,7 @@ class Orchestrator(LoggableComponent):
         ascending: bool = True,
         limit: int = None,
         offset: int = None,
+        skip_data: bool = False,
     ) -> List[Tuple[bytes, datetime]]:
         """
         Query the data in the collection with the given name. The data will be filtered using the
@@ -107,11 +108,18 @@ class Orchestrator(LoggableComponent):
         :param ascending: Whether to sort the data in ascending order
         :param limit: The limit of the data to retrieve
         :param offset: The offset of the data to retrieve
+        :param skip_data: Whether to skip the data in the results (data will be None)
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
 
         return self._engine.query(
-            collection_name, min_timestamp, max_timestamp, ascending, limit, offset
+            collection_name,
+            min_timestamp,
+            max_timestamp,
+            ascending,
+            limit,
+            offset,
+            skip_data,
         )
 
     def flush(self, collection_name: str):

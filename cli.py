@@ -36,6 +36,14 @@ def main():
         default=os.environ.get("LOG_LEVEL", "INFO"),
         help="Logging level, default is INFO",
     )
+    parser.add_argument(
+        "--db-url",
+        type=str,
+        default=os.environ.get(
+            "DB_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
+        ),
+        help="Database URL, default is postgresql://postgres:postgres@localhost:5432/postgres",
+    )
 
     args = parser.parse_args()
 
@@ -43,7 +51,7 @@ def main():
     logging.basicConfig(level=logging.getLevelName(args.log_level))
 
     logging.info(
-        f"Running FastAPI app on {args.ip}:{args.port} with {args.threads} threads using {args.db_url} and {args.storage_folder}"
+        f"Running FastAPI app on {args.ip}:{args.port} with {args.threads} threads"
     )
 
     # Running the FastAPI app with Uvicorn

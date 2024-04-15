@@ -24,7 +24,11 @@ app = fastapi.FastAPI()
 
 
 core = Orchestrator(
-    PersistenceManager(os.environ.get("DB_URL", "sqlite:///sqlite3.db")),
+    PersistenceManager(
+        os.environ.get(
+            "DB_URL", "postgresql://postgres:postgres@localhost:5428/postgres"
+        )
+    ),
     (
         AzureBlobIOManager()
         if os.environ.get("IO_MANAGER", "file_system") == "azure_blob"
@@ -52,7 +56,7 @@ async def query_collection(
     max_timestamp: int,
     ascending: bool,
     limit: int,
-    offset: int,
+    skip_data: bool = False,
 ):
     """
     Query the data in the collection with the given name. The data will be filtered using the
@@ -61,7 +65,7 @@ async def query_collection(
     :param max_timestamp: The maximum timestamp to filter the data (in milliseconds)
     :param ascending: Whether to sort the data in ascending order
     :param limit: The limit of the data to retrieve
-    :param offset: The offset of the data to retrieve
+    :param skip_data: Whether to skip the data in the results (data will be None)
     :return: The data in the collection as a list of tuples of bytes and datetime
     """
     # Convert timestamps to datetime
@@ -70,13 +74,19 @@ async def query_collection(
 
     try:
         results = core.query(
-            collection_name, min_timestamp, max_timestamp, ascending, limit, offset
+            collection_name,
+            min_timestamp,
+            max_timestamp,
+            ascending,
+            limit,
+            None,
+            skip_data,
         )
     except AnotherWorldException as e:
         return {"results": [], "error": str(e)}
-
     formatted_results = [
-        {"data": result[0].hex(), "timestamp": result[1]} for result in results
+        {"data": result[0].hex() if result[0] else "", "timestamp": result[1]}
+        for result in results
     ]
 
     return {"results": formatted_results}

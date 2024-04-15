@@ -189,6 +189,7 @@ class Engine(LoggableComponent):
         ascending: bool = True,
         limit: int = None,
         offset: int = None,
+        skip_data: bool = False,
     ) -> List[Tuple[bytes, datetime]]:
         """
         Query the data in the collection with the given name. The data will be filtered using the
@@ -198,6 +199,7 @@ class Engine(LoggableComponent):
         :param ascending: Whether to sort the data in ascending order
         :param limit: The limit of the data to retrieve
         :param offset: The offset of the data to retrieve
+        :param skip_data: Whether to skip the data in the results (data will be None)
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
 
@@ -210,6 +212,12 @@ class Engine(LoggableComponent):
         buffers = self.persistence_manager.query_buffers_no_lock(
             collection, min_timestamp, max_timestamp, ascending, limit
         )
+
+        if skip_data:
+            return [
+                (None, int(item.timestamp.timestamp()))
+                for item in itertools.chain(fragments, buffers)
+            ]
 
         result = []
 
