@@ -8,7 +8,7 @@ from google.protobuf.json_format import MessageToDict, SerializeToJsonError
 from google.protobuf.message import DecodeError
 from google.transit import gtfs_realtime_pb2
 
-from src.core.storage.parsers.base import BaseParser, MissMatchingTypesException
+from src.core.bridge.parsers.base import BaseParser, MissMatchingTypesException
 from src.core.utils.numpy_json import NumpyEncoder
 
 

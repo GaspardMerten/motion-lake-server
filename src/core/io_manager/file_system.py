@@ -4,6 +4,7 @@
 import contextlib
 import os
 import re
+import shutil
 from collections import defaultdict
 from multiprocessing import Lock
 
@@ -20,7 +21,7 @@ class FileSystemIOManager(IOManager):
         self.fragment_locks = defaultdict(Lock)
         self.wait_queue = defaultdict(list)
         self.storage_folder = storage_folder
-        # Ensure the storage folder exists
+        # Ensure the bridge folder exists
         os.makedirs(storage_folder, exist_ok=True)
         self.global_lock = Lock()
 
@@ -99,3 +100,17 @@ class FileSystemIOManager(IOManager):
 
     def get_fragment_path(self, collection_name: str, fragment_uuid: str) -> str:
         return os.path.join(self.storage_folder, collection_name, fragment_uuid)
+
+    def remove_fragment(self, collection_name: str, fragment_uuid: str):
+        fragment_path = self.get_fragment_path(collection_name, fragment_uuid)
+        os.remove(fragment_path)
+        return True
+
+    def remove_fragments(self, collection_name: str, fragment_uuids: list):
+        for fragment_uuid in fragment_uuids:
+            self.remove_fragment(collection_name, fragment_uuid)
+        return True
+
+    def remove_collection(self, collection_name: str):
+        collection_path = os.path.join(self.storage_folder, collection_name)
+        shutil.rmtree(collection_path)

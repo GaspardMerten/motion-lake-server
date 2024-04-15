@@ -3,7 +3,7 @@
 
 import json
 
-from src.core.storage.parsers.base import BaseParser, MissMatchingTypesException
+from src.core.bridge.parsers.base import BaseParser, MissMatchingTypesException
 from src.core.utils.numpy_json import NumpyEncoder
 
 

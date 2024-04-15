@@ -5,7 +5,7 @@ from typing import List, Dict
 
 import pandas as pd
 
-from src.core.storage.parsers.base import BaseParser, MissMatchingTypesException
+from src.core.bridge.parsers.base import BaseParser, MissMatchingTypesException
 from src.core.utils.zip_tools import zip_to_dict, dict_to_zip
 
 

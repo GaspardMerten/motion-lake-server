@@ -1,18 +1,19 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
-
+import itertools
 import os
+from collections import defaultdict
 from datetime import datetime
 from typing import List, Tuple
+from uuid import uuid4
 
 from filelock import FileLock
 
-from src.core.constants import BUFFER
+from src.core.bridge.parquet_bridge import ParquetBridge
 from src.core.io_manager.base import IOManager
 from src.core.mixins.loggable import LoggableComponent
-from src.core.models import DataType
-from src.core.persistence import PersistenceManager
-from src.core.storage.base import InternalStorageManager
+from src.core.models import ContentType
+from src.core.persistence.persistence import PersistenceManager
 from src.core.utils.exception import AnotherWorldException
 
 DEFAULT_BUFFER_SIZE = 100 * 1024 * 1024  # 100MB
@@ -23,38 +24,13 @@ class Engine(LoggableComponent):
         self,
         io_manager: IOManager,
         persistence_manager: PersistenceManager,
-        internal_storage: InternalStorageManager,
+        bridge: ParquetBridge,
     ):
         super().__init__()
-        self.internal_storage = internal_storage
+        self.bridge = bridge
         self.io_manager = io_manager
         self.persistence_manager = persistence_manager
         self.startup_lock = FileLock("startup.lock")
-
-    def check_for_storage_integrity(self):
-        """
-        On startup, the Lake should check the storage integrity and fix any inconsistency.
-        """
-        try:
-            with self.startup_lock.acquire(blocking=False):
-                self.log("Checking for storage integrity, acquiring lock")
-                for (
-                    collection
-                ) in self.persistence_manager.get_collections_with_active_buffer():
-                    self.log_warning(
-                        f"Collection {collection.name} has an active buffer, flushing it"
-                    )
-                    try:
-                        self.flush(collection.name)
-                    except Exception as e:
-                        self.log_error(
-                            f"Failed to flush buffer for collection {collection.name}, {e}"
-                        )
-
-        except TimeoutError:
-            self.log_warning(
-                "Startup lock already acquired, skipping storage integrity check"
-            )
 
     def create_collection(self, collection_name: str, allow_existing: bool = False):
         """
@@ -65,12 +41,13 @@ class Engine(LoggableComponent):
         """
 
         self.io_manager.create_collection(collection_name)
+        # noinspection PyTypeChecker
         self.persistence_manager.create_collection(collection_name, allow_existing)
         self.log(f"Collection {collection_name} created")
 
     def list_collections(self) -> List[dict]:
         """
-        List all the collections in the storage.
+        List all the collections in the bridge.
         :return: A list of collection names
         """
 
@@ -81,105 +58,128 @@ class Engine(LoggableComponent):
         collection_name: str,
         timestamp: datetime,
         data: bytes,
-        data_type=None,
+        content_type=None,
         create_collection: bool = False,
     ):
         """
         Store the given data in the collection with the given name. The data will be stored in a
         buffered fragment until it is flushed to a new fragment. The data will be associated with
         the given timestamp. An optional data type can be provided to specify the type of the data,
-        this will be used as a hint for the internal storage manager (if it supports it, otherwise
+        this will be used as a hint for the internal bridge manager (if it supports it, otherwise
         fallback to the default behavior).
 
         :param collection_name: The name of the collection to store the data in
         :param timestamp: The timestamp to associate with the data
         :param data: The data to store
-        :param data_type: (Optional) The type of the data
+        :param content_type: (Optional) The type of the data
         :param create_collection: Whether to create the collection if it does not exist
         :return: None
         """
 
         if create_collection:
-            try:
-                self.persistence_manager.get_collection_by_name(collection_name)
-            except AnotherWorldException:
+            self.create_collection_if_not_exists(collection_name)
 
-                self.create_collection(collection_name)
+        buffer_uuid = str(uuid4())
 
-        # Append the segment to the buffered fragment
-        current_size = self.io_manager.get_size(collection_name, BUFFER)
+        with self.io_manager.get_write_context(collection_name, buffer_uuid) as output:
+            result = self.bridge.write_single(
+                bytes_data=data,
+                timestamp=timestamp,
+                output=output,
+                content_type=content_type,
+            )
 
-        # Append the data to the buffered fragment
-        with self.io_manager.get_append_context(collection_name, BUFFER) as f:
-            f.write(data)
-
-        self.persistence_manager.append_segments_to_buffer_fragment(
+        self.persistence_manager.log_buffer(
             collection_name,
-            (
-                current_size,
-                current_size + len(data),
-                int(timestamp.timestamp()),
-                data_type.value if data_type is not None else None,
-            ),
+            timestamp,
+            buffer_uuid,
+            result.size,
+            result.original_size,
+            result.content_type,
         )
 
-        if self.io_manager.get_size(collection_name, BUFFER) > os.environ.get(
-            "BUFFER_SIZE", DEFAULT_BUFFER_SIZE
-        ):  # 500MB
+        if self.persistence_manager.get_unlocked_buffers_size(
+            collection_name
+        ) > os.getenv("BUFFER_SIZE", DEFAULT_BUFFER_SIZE):
             self.flush(collection_name)
+
+    def create_collection_if_not_exists(self, collection_name: str):
+        """
+        Create a collection if it does not exist.
+
+        :param collection_name: The name of the collection to create
+        """
+        try:
+            self.persistence_manager.get_collection_by_name(collection_name)
+        except AnotherWorldException:
+            self.create_collection(collection_name)
 
     def flush(self, collection_name: str) -> bool:
         """
         Flush the buffered data to a new fragment. The data will be written to a new fragment and
         the buffered fragment will be removed. An optional data type can be provided to specify the
-        type of the data, this will be used as a hint for the internal storage manager (if it
+        type of the data, this will be used as a hint for the internal bridge manager (if it
         supports it, otherwise fallback to the default behavior).
 
         :param collection_name: The name of the collection to flush
-        :param data_type: (Optional) The type of the data
         :return: True if the data was flushed, False otherwise
         """
 
-        if not self.persistence_manager.has_buffered_fragment(collection_name):
-            return False
+        collection = self.persistence_manager.get_collection_by_name(collection_name)
+        buffers = self.persistence_manager.get_and_lock_buffers(collection)
 
-        # Create a new fragment from the buffered fragment
-        segments, associated_fragment_uuid = (
-            self.persistence_manager.associate_new_fragment_to_buffer(collection_name)
-        )
-        data_types = [segment[3] for segment in segments]
+        data = defaultdict(list)
+        uuid_to_timestamp = {}
 
-        if len(set(data_types)) > 1:
-            data_type = DataType.RAW
-        else:
-            data_type = DataType(data_types[0]) if data_types[0] is not None else None
+        for buffer in buffers:
+            data[buffer.content_type].append(
+                (
+                    self._get_bytes_for_buffer(collection_name, buffer.uuid),
+                    buffer.uuid,
+                )
+            )
+            uuid_to_timestamp[buffer.uuid] = buffer.timestamp
 
-        # Write the data in the buffered fragment to the new fragment
-        with self.io_manager.get_read_context(collection_name, BUFFER) as f:
-            with self.io_manager.get_write_context(
-                collection_name, associated_fragment_uuid
-            ) as output:
-                # Read and Split the data
-                data = f.read()
-                items = [
-                    (data[segment[0] : segment[1]], segment[2]) for segment in segments
-                ]
-                # Write the data
-                metadata = self.internal_storage.write(items, output, data_type)
+        for content_type, items in data.items():
+            try:
+                result_bytes, skipped = self.bridge.merge(items)
+            except Exception as e:
+                self.log_error(
+                    f"Error while merging buffers for collection {collection_name}", e
+                )
+                # Flush all fragment buffers as skipped
+                self.persistence_manager.flush_skipped_buffers(
+                    collection, [item[1] for item in items]
+                )
+                continue
 
-        # Remove the buffered fragment and create items
-        self.persistence_manager.remove_buffered_fragment_and_create_items(
-            collection_name, metadata
-        )
+            self.log(
+                f"Flushing {len(skipped)} skipped buffers for collection {collection_name}"
+            )
+            self.persistence_manager.flush_skipped_buffers(collection, skipped)
 
-        # Remove the buffer file
-        os.remove(os.path.join(self.io_manager.storage_folder, collection_name, BUFFER))
+            if result_bytes:
+                new_fragment_uuid = str(uuid4())
+                not_skipped = [item[1] for item in items if item[1] not in skipped]
 
-        self.log(
-            f"Buffered data flushed to new fragment in collection {collection_name}"
-        )
+                with self.io_manager.get_write_context(
+                    collection_name, new_fragment_uuid
+                ) as output:
+                    output.write(result_bytes.getvalue())
+
+                self.log(
+                    f"Flushing {len(not_skipped)} buffers for collection {collection_name}"
+                )
+                self.persistence_manager.flush_buffer(
+                    collection, new_fragment_uuid, content_type, not_skipped
+                )
+                self.io_manager.remove_fragments(collection_name, not_skipped)
 
         return True
+
+    def _get_bytes_for_buffer(self, collection_name: str, buffer_uuid: str):
+        with self.io_manager.get_read_context(collection_name, buffer_uuid) as f:
+            return f.read()
 
     def query(
         self,
@@ -200,23 +200,31 @@ class Engine(LoggableComponent):
         :param offset: The offset of the data to retrieve
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
+
         collection = self.persistence_manager.get_collection_by_name(collection_name)
+
+        # noinspection PyTypeChecker
         fragments = self.persistence_manager.query(
+            collection, min_timestamp, max_timestamp, ascending, limit
+        )
+        buffers = self.persistence_manager.query_buffers_no_lock(
             collection, min_timestamp, max_timestamp, ascending, limit
         )
 
         result = []
 
-        for fragment in fragments:
+        for item in itertools.chain(fragments, buffers):
             result.extend(
                 self._get_fragment_items(
-                    collection, fragment, min_timestamp, max_timestamp, ascending, limit
+                    collection,
+                    item.uuid,
+                    item.content_type,
+                    min_timestamp,
+                    max_timestamp,
+                    ascending,
+                    limit,
                 )
             )
-
-        result.extend(
-            self._get_data_from_buffer(collection, min_timestamp, max_timestamp)
-        )
 
         # Sort the result by timestamp
         result.sort(key=lambda x: x[1], reverse=not ascending)
@@ -234,33 +242,20 @@ class Engine(LoggableComponent):
 
         return result
 
-    def _get_data_from_buffer(self, collection, min_timestamp, max_timestamp):
-        buffer = self.persistence_manager.get_buffered_fragment(collection)
-
-        if buffer is None:
-            return []
-
-        segments = buffer.segments
-
-        with self.io_manager.get_read_context(collection.name, BUFFER) as f:
-            # Split the data
-            data = f.read()
-
-            items = [
-                (data[segment[0] : segment[1]], segment[2])
-                for segment in segments
-                if min_timestamp <= datetime.fromtimestamp(segment[2]) <= max_timestamp
-            ]
-
-        return items
-
     def _get_fragment_items(
-        self, collection, fragment, min_timestamp, max_timestamp, ascending, limit
+        self,
+        collection,
+        fragment_uuid,
+        content_type,
+        min_timestamp,
+        max_timestamp,
+        ascending,
+        limit,
     ) -> List[Tuple[bytes, datetime]]:
-        with self.io_manager.get_read_context(collection.name, fragment.uuid) as f:
-            result = self.internal_storage.read(
+        with self.io_manager.get_read_context(collection.name, fragment_uuid) as f:
+            result = self.bridge.read(
                 f,
-                fragment.internal_metadata,
+                content_type=content_type,
                 where={"min_timestamp": min_timestamp, "max_timestamp": max_timestamp},
                 order_by=["timestamp" if ascending else "timestamp desc"],
                 limit=limit,
@@ -285,11 +280,32 @@ class Engine(LoggableComponent):
 
         collection = self.persistence_manager.get_collection_by_name(collection_name)
         fragments = self.persistence_manager.query(
-            collection, min_timestamp, max_timestamp, True, data_types=[DataType.JSON, DataType.GTFS_RT]
+            collection,
+            min_timestamp,
+            max_timestamp,
+            True,
+            content_types=[ContentType.JSON, ContentType.GTFS_RT],
         )
+        buffers = self.persistence_manager.query_buffers_no_lock(
+            collection, min_timestamp, max_timestamp
+        )
+
         paths = [
-            self.io_manager.get_fragment_path(collection.name, fragment.uuid)
-            for fragment in fragments
+            self.io_manager.get_fragment_path(collection_name, item.uuid)
+            for item in itertools.chain(fragments, buffers)
         ]
 
-        return self.internal_storage.advanced_query(paths, query, min_timestamp, max_timestamp)
+        if not paths:
+            return []
+        return self.bridge.advanced_query(paths, query, min_timestamp, max_timestamp)
+
+    def delete_collection(self, collection_name: str):
+        """
+        Delete the collection with the given name.
+        :param collection_name: The name of the collection to delete
+        :return: None
+        """
+
+        self.persistence_manager.delete_collection(collection_name)
+        self.io_manager.remove_collection(collection_name)
+        self.log(f"Collection {collection_name} deleted")

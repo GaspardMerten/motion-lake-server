@@ -1,6 +1,6 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
-from src.core.storage.parsers.base import BaseParser, MissMatchingTypesException
+from src.core.bridge.parsers.base import BaseParser, MissMatchingTypesException
 
 
 class BytesParser(BaseParser):

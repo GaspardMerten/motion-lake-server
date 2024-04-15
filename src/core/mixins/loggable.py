@@ -26,13 +26,14 @@ class LoggableComponent:
         """
         self._logger.info(message)
 
-    def log_error(self, message: str) -> None:
+    def log_error(self, message: str, exception: Exception = None) -> None:
         """
         Log an error message with the logger
         :param message:  The error message to log
+        :param exception: The exception to log
         :return: None
         """
-        self._logger.error(message)
+        self._logger.error(message, exc_info=exception)
 
     def log_warning(self, message: str) -> None:
         """

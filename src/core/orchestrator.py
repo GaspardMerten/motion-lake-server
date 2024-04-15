@@ -4,48 +4,46 @@
 from datetime import datetime
 from typing import List, Tuple
 
+from src.core.bridge.parquet_bridge import ParquetBridge
 from src.core.engine import Engine
 from src.core.io_manager.base import IOManager
 from src.core.mixins.loggable import LoggableComponent
-from src.core.persistence import PersistenceManager
-from src.core.storage.base import InternalStorageManager
+from src.core.persistence.persistence import PersistenceManager
 
 
 class Orchestrator(LoggableComponent):
     """
-    The Orchestrator is the main class of the system. It is responsible for managing the storage and the
-    persistence of the data. It also manages the internal storage, which is responsible for
-    reading and writing the data in the storage.
+    The Orchestrator is the main class of the system. It is responsible for managing the bridge and the
+    persistence of the data. It also manages the internal bridge, which is responsible for
+    reading and writing the data in the bridge.
 
     The Orchestrator is the entry point for the following operations:
     - Store data
     - Retrieve data
     - Flush the buffered data
-    - Check the storage integrity
+    - Check the bridge integrity
     """
 
     def __init__(
         self,
         persistence_manager: PersistenceManager,
         io_manager: IOManager,
-        internal_storage: InternalStorageManager,
+        bridge: ParquetBridge,
     ) -> None:
         """
         Initialize the Orchestrator with the given parameters.
-        :type internal_storage: object
+        :type bridge: object
         :param persistence_manager: The persistence manager to use for managing the data
         :param io_manager: The IO manager to use for reading and writing the data
-        :param internal_storage: The internal storage manager to use for reading and writing the data
+        :param bridge: The bridge to use for reading and writing the data
         """
         super().__init__()
+
         self._engine = Engine(
             io_manager=io_manager,
             persistence_manager=persistence_manager,
-            internal_storage=internal_storage,
+            bridge=bridge,
         )
-        self.log("Orchestrator initialized, launching storage integrity check")
-        self._engine.check_for_storage_integrity()
-        self.log("Storage integrity check completed")
 
     def create_collection(self, collection_name: str, allow_existing: bool = False):
         """
@@ -59,7 +57,7 @@ class Orchestrator(LoggableComponent):
 
     def list_collections(self) -> List[dict]:
         """
-        List all the collections in the storage.
+        List all the collections in the bridge.
         :return: A list of collection names
         """
 
@@ -70,26 +68,26 @@ class Orchestrator(LoggableComponent):
         collection_name: str,
         timestamp: datetime,
         data: bytes,
-        data_type=None,
+        content_type=None,
         create_collection: bool = False,
     ):
         """
         Store the given data in the collection with the given name. The data will be stored in a
         buffered fragment until it is flushed to a new fragment. The data will be associated with
         the given timestamp. An optional data type can be provided to specify the type of the data,
-        this will be used as a hint for the internal storage manager (if it supports it, otherwise
+        this will be used as a hint for the bridge (if it supports it, otherwise
         fallback to the default behavior).
 
         :param collection_name: The name of the collection to store the data in
         :param timestamp: The timestamp to associate with the data
         :param data: The data to store
-        :param data_type: (Optional) The type of the data
+        :param content_type: (Optional) The type of the data
         :param create_collection: Whether to create the collection if it does not exist
         :return: None
         """
 
         return self._engine.store(
-            collection_name, timestamp, data, data_type, create_collection
+            collection_name, timestamp, data, content_type, create_collection
         )
 
     def query(
@@ -125,7 +123,13 @@ class Orchestrator(LoggableComponent):
 
         return self._engine.flush(collection_name)
 
-    def advanced_query(self, collection_name: str, query: str, min_timestamp: datetime, max_timestamp: datetime):
+    def advanced_query(
+        self,
+        collection_name: str,
+        query: str,
+        min_timestamp: datetime,
+        max_timestamp: datetime,
+    ):
         """
         Perform an advanced query on the given collection.
         :param collection_name: The name of the collection to query
@@ -135,4 +139,15 @@ class Orchestrator(LoggableComponent):
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
 
-        return self._engine.advanced_query(collection_name, query, min_timestamp, max_timestamp)
+        return self._engine.advanced_query(
+            collection_name, query, min_timestamp, max_timestamp
+        )
+
+    def delete_collection(self, collection_name: str):
+        """
+        Delete the collection with the given name.
+        :param collection_name: The name of the collection to delete
+        :return: None
+        """
+
+        return self._engine.delete_collection(collection_name)

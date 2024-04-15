@@ -1,12 +1,10 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
 
-from typing import List, Tuple
-
-from sqlalchemy import ForeignKey, DateTime, JSON
+from sqlalchemy import ForeignKey, DateTime
 from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 
@@ -27,36 +25,40 @@ class Collection(Base):
 class Fragment(Base):
     __tablename__ = "fragment"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    uuid: Mapped[str] = mapped_column()
-    data_type: Mapped[int] = mapped_column(nullable=True)
+    uuid: Mapped[str] = mapped_column(primary_key=True)
+    content_type: Mapped[int] = mapped_column(nullable=True)
     internal_metadata: Mapped[dict] = mapped_column(JSONB, nullable=True)
     collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"))
 
     def __repr__(self) -> str:
-        return f"Fragment(id={self.id!r}, uuid={self.uuid!r})"
+        return f"Fragment(uuid={self.uuid!r})"
 
 
 class BufferedFragment(Base):
     __tablename__ = "buffered_fragment"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"), unique=True)
-    segments: Mapped[List[Tuple[int, int, int]]] = mapped_column(JSONB)
-    fragment_id: Mapped[int] = mapped_column(
-        ForeignKey("fragment.id", ondelete="SET NULL"), nullable=True
-    )
-    associated_fragment: Mapped[Fragment] = relationship("Fragment")
+    timestamp: Mapped[str] = mapped_column(DateTime, primary_key=True)
+    collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"))
+    content_type: Mapped[int] = mapped_column()
+    size: Mapped[int] = mapped_column()
+    original_size: Mapped[int] = mapped_column()
+    uuid: Mapped[str] = mapped_column(primary_key=True)
+    locked: Mapped[bool] = mapped_column(default=False)
 
     def __repr__(self) -> str:
-        return f"BufferedFragment(id={self.id!r})"
+        return f"BufferedFragment(uuid={self.uuid!r})"
 
 
 class Item(Base):
     __tablename__ = "item"
 
-    fragment_id: Mapped[int] = mapped_column(ForeignKey("fragment.id"))
+    fragment_id: Mapped[str] = mapped_column(
+        ForeignKey("fragment.uuid"), primary_key=True
+    )
     collection_id: Mapped[int] = mapped_column(
         ForeignKey("collection.id"), primary_key=True
     )
     timestamp: Mapped[str] = mapped_column(DateTime, primary_key=True)
+    size: Mapped[int] = mapped_column()
+    original_size: Mapped[int] = mapped_column()
+    content_type: Mapped[int] = mapped_column()

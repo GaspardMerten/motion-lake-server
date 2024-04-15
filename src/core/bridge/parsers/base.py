@@ -3,8 +3,6 @@
 
 from typing import Protocol
 
-from src.core.utils.exception import AnotherWorldException
-
 
 class MissMatchingTypesException(Exception):
     pass
