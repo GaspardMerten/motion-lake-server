@@ -9,22 +9,30 @@ from io import BytesIO
 from azure.storage.blob import BlobServiceClient
 
 from src.core.io_manager.base import IOManager
+from src.core.mixins.loggable import LoggableComponent
 
 
 # noinspection PyArgumentList
-class AzureBlobIOManager(IOManager):
+class AzureBlobIOManager(LoggableComponent, IOManager):
     def __init__(self) -> None:
         """
         This class implements the IOManager interface using the Azure Blob Storage system.
         """
+        super().__init__()
         self.container_name = os.getenv("AZURE_STORAGE_CONTAINER_NAME")
         connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
         assert connection_string, "AZURE_STORAGE_CONNECTION_STRING is not set"
         assert self.container_name, "AZURE_STORAGE_CONTAINER_NAME is not set"
         self.client = BlobServiceClient.from_connection_string(connection_string)
 
+    @staticmethod
+    def _sanitize_collection_name(collection_name: str) -> str:
+        return collection_name.replace("_", "-")
+
     @contextlib.contextmanager
     def get_fragment_context(self, collection_name: str, identifier: str, mode: str):
+        collection_name = self._sanitize_collection_name(collection_name)
+
         assert mode in [
             "rb",
             "wb",
@@ -76,20 +84,35 @@ class AzureBlobIOManager(IOManager):
             yield context
 
     def get_fragment_path(self, collection_name: str, fragment_uuid: str) -> str:
-        return os.path.join(self.container_name, collection_name, fragment_uuid)
+        collection_name = self._sanitize_collection_name(collection_name)
+
+        return os.path.join(collection_name, fragment_uuid)
 
     def remove_fragment(self, collection_name: str, fragment_uuid: str):
+        collection_name = self._sanitize_collection_name(collection_name)
+
         fragment_path = self.get_fragment_path(collection_name, fragment_uuid)
         blob = self.client.get_blob_client(self.container_name, fragment_path)
-        blob.delete_blob()
+        try:
+            blob.delete_blob()
+        except Exception as e:
+            self.log_error(
+                f"Failed to remove fragment {fragment_path} from collection {collection_name}",
+                e,
+            )
+            return False
         return True
 
     def remove_fragments(self, collection_name: str, fragment_uuids: list):
+        collection_name = self._sanitize_collection_name(collection_name)
+
         for fragment_uuid in fragment_uuids:
             self.remove_fragment(collection_name, fragment_uuid)
         return True
 
     def remove_collection(self, collection_name: str):
+        collection_name = self._sanitize_collection_name(collection_name)
+
         container = self.client.get_container_client(self.container_name)
         # Delete all blob starting with the collection name followed by a /
         for blob in container.list_blobs(name_starts_with=collection_name + "/"):

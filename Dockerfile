@@ -1,4 +1,4 @@
-FROM python
+FROM python:3.12
 
 # Copy all the files from the project to the container (except the ones in .dockerignore)
 COPY . /app

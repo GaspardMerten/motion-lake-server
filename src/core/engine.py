@@ -16,7 +16,7 @@ from src.core.models import ContentType
 from src.core.persistence.persistence import PersistenceManager
 from src.core.utils.exception import AnotherWorldException
 
-DEFAULT_BUFFER_SIZE = 100 * 1024 * 1024  # 100MB
+DEFAULT_BUFFER_SIZE = 20  # 20 MB
 
 
 class Engine(LoggableComponent):
@@ -97,10 +97,10 @@ class Engine(LoggableComponent):
             result.original_size,
             result.content_type,
         )
-
-        if self.persistence_manager.get_unlocked_buffers_size(
-            collection_name
-        ) > os.getenv("BUFFER_SIZE", DEFAULT_BUFFER_SIZE):
+        if (
+            self.persistence_manager.get_unlocked_buffers_size(collection_name)
+            > int(os.getenv("BUFFER_SIZE", str(DEFAULT_BUFFER_SIZE))) * 1024 * 1024
+        ):
             self.flush(collection_name)
 
     def create_collection_if_not_exists(self, collection_name: str):

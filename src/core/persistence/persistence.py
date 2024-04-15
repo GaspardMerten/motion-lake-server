@@ -295,7 +295,7 @@ class PersistenceManager:
             session.add(fragment)
 
             item = Item(
-                fragment_id=fragment.id,
+                fragment_id=fragment.uuid,
                 collection_id=collection.id,
                 timestamp=buffer_fragment.timestamp,
                 size=buffer_fragment.size,

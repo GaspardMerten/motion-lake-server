@@ -33,8 +33,8 @@ def main():
     parser.add_argument(
         "--log-level",
         type=str,
-        default=os.environ.get("LOG_LEVEL", "INFO"),
-        help="Logging level, default is INFO",
+        default=os.environ.get("LOG_LEVEL", "WARNING"),
+        help="Logging level, default is WARNING",
     )
     parser.add_argument(
         "--db-url",

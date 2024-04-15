@@ -35,7 +35,7 @@ core = Orchestrator(
         else FileSystemIOManager(os.environ.get("STORAGE_PATH", "storage"))
     ),
     ParquetBridge(
-        compression=os.environ.get("COMPRESSION", "snappy"),
+        compression=os.environ.get("COMPRESSION", "gzip"),
         compression_level=(os.environ.get("COMPRESSION_LEVEL", None)),
     ),
 )
