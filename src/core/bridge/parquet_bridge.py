@@ -5,7 +5,6 @@ from datetime import datetime
 from io import BytesIO
 from typing import List, Tuple, Iterable
 
-import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pyarrow import ArrowInvalid
@@ -231,7 +230,9 @@ class ParquetBridge(LoggableComponent):
         return filtered_data
 
     @staticmethod
-    def advanced_query(files: List[str], query: str, *args, **kwargs):
+    def advanced_query(
+        duck_db_connection, files: List[str], query: str, *args, **kwargs
+    ):
         """
         Perform an advanced query on the given files.
         :param files: The files to query
@@ -239,13 +240,13 @@ class ParquetBridge(LoggableComponent):
         :return: The result of the query
         """
 
-        con = duckdb.connect()
-
         files_str = ", ".join([f"'{file}'" for file in files])
 
         table = f"(SELECT * FROM read_parquet([{files_str}], union_by_name=true))"
 
         try:
-            return con.execute(query.replace("[table]", table)).fetchall()
+            return duck_db_connection.execute(
+                query.replace("[table]", table)
+            ).fetchall()
         except Exception as e:
             raise AnotherWorldException(f"Query failed: {e}")

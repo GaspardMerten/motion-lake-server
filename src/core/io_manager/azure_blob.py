@@ -6,6 +6,7 @@ import os
 import re
 from io import BytesIO
 
+import duckdb
 from azure.storage.blob import BlobServiceClient
 
 from src.core.io_manager.base import IOManager
@@ -83,21 +84,24 @@ class AzureBlobIOManager(LoggableComponent, IOManager):
         with self.get_fragment_context(collection_name, fragment_uuid, "wb") as context:
             yield context
 
-    def get_fragment_path(self, collection_name: str, fragment_uuid: str) -> str:
+    def get_duck_db_fragment_path(
+        self, collection_name: str, fragment_uuid: str
+    ) -> str:
         collection_name = self._sanitize_collection_name(collection_name)
 
-        return os.path.join(collection_name, fragment_uuid)
+        return "az://" + os.path.join(
+            self.container_name, collection_name, fragment_uuid
+        )
 
     def remove_fragment(self, collection_name: str, fragment_uuid: str):
         collection_name = self._sanitize_collection_name(collection_name)
-
-        fragment_path = self.get_fragment_path(collection_name, fragment_uuid)
-        blob = self.client.get_blob_client(self.container_name, fragment_path)
+        blob_name = f"{collection_name}/{fragment_uuid}"
+        blob = self.client.get_blob_client(self.container_name, blob_name)
         try:
             blob.delete_blob()
         except Exception as e:
             self.log_error(
-                f"Failed to remove fragment {fragment_path} from collection {collection_name}",
+                f"Failed to remove fragment {blob_name} from collection {collection_name}",
                 e,
             )
             return False
@@ -117,3 +121,18 @@ class AzureBlobIOManager(LoggableComponent, IOManager):
         # Delete all blob starting with the collection name followed by a /
         for blob in container.list_blobs(name_starts_with=collection_name + "/"):
             container.delete_blob(blob)
+
+    def get_duck_db_connection(self) -> duckdb.DuckDBPyConnection:
+        connection = duckdb.connect()
+        # Install Azure Blob Storage extension
+        connection.execute(
+            f"""INSTALL AZURE; LOAD AZURE; 
+            CREATE SECRET secret1 (
+                TYPE AZURE,
+                CONNECTION_STRING '{os.getenv("AZURE_STORAGE_CONNECTION_STRING")}'
+            );
+            SET azure_transport_option_type = 'curl';
+            """
+        )
+
+        return connection

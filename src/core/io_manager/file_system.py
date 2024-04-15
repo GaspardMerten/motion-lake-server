@@ -98,11 +98,13 @@ class FileSystemIOManager(IOManager):
         ) as context:
             yield context
 
-    def get_fragment_path(self, collection_name: str, fragment_uuid: str) -> str:
+    def get_duck_db_fragment_path(
+        self, collection_name: str, fragment_uuid: str
+    ) -> str:
         return os.path.join(self.storage_folder, collection_name, fragment_uuid)
 
     def remove_fragment(self, collection_name: str, fragment_uuid: str):
-        fragment_path = self.get_fragment_path(collection_name, fragment_uuid)
+        fragment_path = self.get_duck_db_fragment_path(collection_name, fragment_uuid)
         os.remove(fragment_path)
         return True
 

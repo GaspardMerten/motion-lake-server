@@ -2,6 +2,8 @@
 #  All rights reserved.
 from typing import Protocol
 
+import duckdb
+
 
 # noinspection PyArgumentList
 class IOManager(Protocol):
@@ -57,7 +59,9 @@ class IOManager(Protocol):
         """
         ...
 
-    def get_fragment_path(self, collection_name: str, fragment_uuid: str) -> str:
+    def get_duck_db_fragment_path(
+        self, collection_name: str, fragment_uuid: str
+    ) -> str:
         """
         This method should return the path to the fragment corresponding to the given fragment UUID.
 
@@ -95,3 +99,11 @@ class IOManager(Protocol):
         :return: None
         """
         ...
+
+    def get_duck_db_connection(self):
+        """
+        This method should return a connection to a DuckDB database.
+
+        :return: A connection to a DuckDB database
+        """
+        return duckdb.connect()

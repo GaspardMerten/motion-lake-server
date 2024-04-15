@@ -299,13 +299,18 @@ class Engine(LoggableComponent):
         )
 
         paths = [
-            self.io_manager.get_fragment_path(collection_name, item.uuid)
+            self.io_manager.get_duck_db_fragment_path(collection_name, item.uuid)
             for item in itertools.chain(fragments, buffers)
         ]
 
         if not paths:
             return []
-        return self.bridge.advanced_query(paths, query, min_timestamp, max_timestamp)
+
+        duck_db_connection = self.io_manager.get_duck_db_connection()
+
+        return self.bridge.advanced_query(
+            duck_db_connection, paths, query, min_timestamp, max_timestamp
+        )
 
     def delete_collection(self, collection_name: str):
         """
