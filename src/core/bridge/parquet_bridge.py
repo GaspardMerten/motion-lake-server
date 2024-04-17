@@ -5,6 +5,7 @@ from datetime import datetime
 from io import BytesIO
 from typing import List, Tuple, Iterable
 
+import polars
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pyarrow import ArrowInvalid
@@ -43,20 +44,24 @@ class ParquetBridge(LoggableComponent):
         super().__init__()
         self.compression = settings.get("compression", "gzip")
         self.compression_level = settings.get("compression_level", "9")
+        self.schema_cache = {}
 
-    def _table_to_bytes(self, table: pa.Table, output: BytesIO) -> BytesIO:
+    def _table_to_bytes(
+        self, table: pa.Table, output: BytesIO, snappy=False
+    ) -> BytesIO:
         """
         Convert a table to a bytes object.
         :param output: The bytes buffer to write to
         :param table: The table to convert
+        :param snappy: Whether to force snappy compression
         :return: The table as bytes
         """
         try:
             pq.write_table(
                 table,
                 output,
-                compression=self.compression,
-                compression_level=self.compression_level,
+                compression=self.compression if not snappy else "snappy",
+                compression_level=self.compression_level if not snappy else None,
             )
         except Exception as e:
             self.log_error(f"Error while writing parquet file: {e}")
@@ -68,6 +73,7 @@ class ParquetBridge(LoggableComponent):
         bytes_data: bytes,
         timestamp: datetime,
         output: BytesIO,
+        collection_name: str,
         content_type: ContentType = None,
     ) -> BridgeResult:
         """
@@ -102,31 +108,46 @@ class ParquetBridge(LoggableComponent):
                     "Cannot write raw data to parquet, even if it's not parsed"
                 )
 
-            return self.write_single(bytes_data, timestamp, output, ContentType.RAW)
+            return self.write_single(
+                bytes_data, timestamp, output, collection_name, ContentType.RAW
+            )
 
-        if not representation:
-            representation = str(representation)
+        used_cache = False
 
         try:
             # noinspection PyArgumentList
+            schema, used_cache = self.infer_schema(
+                representation, collection_name, content_type
+            )
+
+            # If the schema is too large, use binary representation
+            if len(str(schema).split("\n")) > 100:
+                return self.write_single(
+                    bytes_data, timestamp, output, collection_name, ContentType.RAW
+                )
+
             table = pa.Table.from_pydict(
                 {
                     "data": [representation],
                     "timestamp": [timestamp.timestamp()],
                 },
-                schema=pa.schema(
-                    [
-                        pa.field("data", pa.infer_type([representation])),
-                        pa.field("timestamp", pa.int64()),
-                    ]
-                ),
+                schema=schema,
             )
         except ArrowInvalid as e:
+            if used_cache:
+                del self.schema_cache[(collection_name, content_type)]
+                # Remove the cache and try again
+                return self.write_single(
+                    bytes_data, timestamp, output, collection_name, content_type
+                )
+
             self.log_error(f"Error while creating parquet table: {e}")
-            return self.write_single(bytes_data, timestamp, output, ContentType.RAW)
+            return self.write_single(
+                bytes_data, timestamp, output, collection_name, ContentType.RAW
+            )
 
         try:
-            output = self._table_to_bytes(table, output)
+            output = self._table_to_bytes(table, output, snappy=True)
         except AnotherWorldException as e:
             raise e
 
@@ -136,6 +157,21 @@ class ParquetBridge(LoggableComponent):
             size=output.tell(),
             original_size=len(bytes_data),
         )
+
+    def infer_schema(
+        self, representation, collection_name: str, content_type: ContentType
+    ) -> Tuple[pa.Schema, bool]:
+        if collection_name in self.schema_cache:
+            return self.schema_cache[(collection_name, content_type)], True
+        schema = pa.schema(
+            [
+                pa.field("data", pa.infer_type([representation])),
+                pa.field("timestamp", pa.int64()),
+            ]
+        )
+        self.schema_cache[(collection_name, content_type)] = schema
+
+        return schema, False
 
     def merge(
         self, generator: Iterable[Tuple[bytes, str]]
@@ -162,6 +198,7 @@ class ParquetBridge(LoggableComponent):
                 table = (
                     table and pa.concat_tables([table, current_table])
                 ) or current_table
+                table = table.sort_by("timestamp")
             except Exception as e:
                 self.log_error(f"Error while merging parquet files: {e}")
                 skipped.append(file_id)
@@ -191,9 +228,9 @@ class ParquetBridge(LoggableComponent):
         :param limit: The limit clause to limit the data
         :return: The data read as a list of tuples of bytes and datetime
         """
+
         content_type = ContentType(content_type)
         serialize = MAPPING.get(content_type, BytesParser()).serialize
-        reader = BytesIO(reader.read())
 
         table_filters = []
 
@@ -206,24 +243,22 @@ class ParquetBridge(LoggableComponent):
                 ("timestamp", "<=", int(where["max_timestamp"].timestamp()))
             )
 
-        table = pq.read_table(reader, filters=table_filters)
-
-        data = table.to_pandas()
+        data = polars.read_parquet(reader, use_pyarrow=True)
 
         filtered_data = []
 
         if order_by and "timestamp" in order_by:
-            data.sort_values("timestamp")
+            data = data.sort(by="timestamp")
         elif order_by and "timestamp desc" in order_by:
-            data = data.sort_values("timestamp", ascending=False)
-
+            data = data.sort(by="timestamp", descending=True)
         if limit:
             data = data[:limit]
-        for i, row in data.iterrows():
+
+        for row in data.rows():
             filtered_data.append(
                 (
-                    serialize(row["data"]),
-                    row["timestamp"],
+                    serialize(row[0]),
+                    row[1],
                 )
             )
 

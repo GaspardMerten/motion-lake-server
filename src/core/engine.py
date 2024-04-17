@@ -4,7 +4,7 @@ import itertools
 import os
 from collections import defaultdict
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from uuid import uuid4
 
 from filelock import FileLock
@@ -14,9 +14,10 @@ from src.core.io_manager.base import IOManager
 from src.core.mixins.loggable import LoggableComponent
 from src.core.models import ContentType
 from src.core.persistence.persistence import PersistenceManager
+from src.core.persistence.tables import Collection
 from src.core.utils.exception import AnotherWorldException
 
-DEFAULT_BUFFER_SIZE = 20  # 20 MB
+DEFAULT_BUFFER_SIZE = 6  # 6 MB
 
 
 class Engine(LoggableComponent):
@@ -32,18 +33,23 @@ class Engine(LoggableComponent):
         self.persistence_manager = persistence_manager
         self.startup_lock = FileLock("startup.lock")
 
-    def create_collection(self, collection_name: str, allow_existing: bool = False):
-        """
+    def create_collection(
+        self, collection_name: str, allow_existing: bool = False
+    ) -> Collection:
+        """f
         Create a new collection with the given name.
         :param collection_name: The name of the collection to create
         :param allow_existing: Whether to allow the creation of an existing collection
         :return: None
         """
-
         self.io_manager.create_collection(collection_name)
         # noinspection PyTypeChecker
-        self.persistence_manager.create_collection(collection_name, allow_existing)
+        collection = self.persistence_manager.create_collection(
+            collection_name, allow_existing
+        )
         self.log(f"Collection {collection_name} created")
+
+        return collection
 
     def list_collections(self) -> List[dict]:
         """
@@ -76,13 +82,13 @@ class Engine(LoggableComponent):
         :return: None
         """
 
-        if create_collection:
-            self.create_collection_if_not_exists(collection_name)
+        collection = self.check_collection(collection_name, create_collection)
 
         buffer_uuid = str(uuid4())
 
         with self.io_manager.get_write_context(collection_name, buffer_uuid) as output:
             result = self.bridge.write_single(
+                collection_name=collection_name,
                 bytes_data=data,
                 timestamp=timestamp,
                 output=output,
@@ -90,29 +96,37 @@ class Engine(LoggableComponent):
             )
 
         self.persistence_manager.log_buffer(
-            collection_name,
+            collection.id,
             timestamp,
             buffer_uuid,
             result.size,
             result.original_size,
             result.content_type,
         )
+
         if (
             self.persistence_manager.get_unlocked_buffers_size(collection_name)
             > int(os.getenv("BUFFER_SIZE", str(DEFAULT_BUFFER_SIZE))) * 1024 * 1024
         ):
+            self.log("Flushing collection: " + collection_name)
             self.flush(collection_name)
 
-    def create_collection_if_not_exists(self, collection_name: str):
+    def check_collection(self, collection_name: str, create_collection: bool):
         """
         Create a collection if it does not exist.
 
         :param collection_name: The name of the collection to create
+        :param create_collection: Whether to create the collection if it does not exist
         """
         try:
-            self.persistence_manager.get_collection_by_name(collection_name)
+            return self.persistence_manager.get_collection_by_name(collection_name)
         except AnotherWorldException:
-            self.create_collection(collection_name)
+            if create_collection:
+                return self.create_collection(collection_name)
+            else:
+                raise AnotherWorldException(
+                    f"Collection {collection_name} does not exist"
+                )
 
     def flush(self, collection_name: str) -> bool:
         """
@@ -190,7 +204,7 @@ class Engine(LoggableComponent):
         limit: int = None,
         offset: int = None,
         skip_data: bool = False,
-    ) -> List[Tuple[bytes, datetime]]:
+    ) -> List[Tuple[Union[bytes | None], datetime]]:
         """
         Query the data in the collection with the given name. The data will be filtered using the
         :param collection_name: The name of the collection to query
@@ -203,7 +217,12 @@ class Engine(LoggableComponent):
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
 
-        collection = self.persistence_manager.get_collection_by_name(collection_name)
+        try:
+            collection = self.persistence_manager.get_collection_by_name(
+                collection_name
+            )
+        except AnotherWorldException:
+            return []
 
         # noinspection PyTypeChecker
         fragments = self.persistence_manager.query(
@@ -214,9 +233,11 @@ class Engine(LoggableComponent):
         )
 
         if skip_data:
+            items = self.persistence_manager.get_items_from_fragments(fragments)
+
             return [
                 (None, int(item.timestamp.timestamp()))
-                for item in itertools.chain(fragments, buffers)
+                for item in itertools.chain(items, buffers)
             ]
 
         result = []
@@ -233,7 +254,6 @@ class Engine(LoggableComponent):
                     limit,
                 )
             )
-
         # Sort the result by timestamp
         result.sort(key=lambda x: x[1], reverse=not ascending)
 
@@ -322,3 +342,12 @@ class Engine(LoggableComponent):
         self.persistence_manager.delete_collection(collection_name)
         self.io_manager.remove_collection(collection_name)
         self.log(f"Collection {collection_name} deleted")
+
+    def get_collection_size(self, collection_name: str) -> int:
+        """
+        Get the size of the collection with the given name.
+        :param collection_name: The name of the collection
+        :return: The size of the collection
+        """
+
+        return self.io_manager.get_collection_size(collection_name)

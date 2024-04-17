@@ -116,3 +116,13 @@ class FileSystemIOManager(IOManager):
     def remove_collection(self, collection_name: str):
         collection_path = os.path.join(self.storage_folder, collection_name)
         shutil.rmtree(collection_path)
+
+    def get_collection_size(self, collection_name: str) -> int:
+        return sum(
+            os.path.getsize(
+                os.path.join(self.storage_folder, collection_name, fragment)
+            )
+            for fragment in os.listdir(
+                os.path.join(self.storage_folder, collection_name)
+            )
+        )

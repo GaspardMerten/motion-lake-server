@@ -2,10 +2,10 @@
 #  All rights reserved.
 
 from datetime import datetime
-from functools import wraps
+from functools import wraps, lru_cache
 from typing import List
 
-from sqlalchemy import create_engine, func
+from sqlalchemy import create_engine, func, text
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -41,7 +41,12 @@ class PersistenceManager:
         self.engine = create_engine(db_url)
         self._create_tables()
         self.session_maker = sessionmaker(
-            self.engine, expire_on_commit=False, autoflush=True
+            self.engine, expire_on_commit=False, autoflush=False
+        )
+
+        # The protected session is used to perform high-integrity operations
+        self.protected_session = self.session_maker(
+            autoflush=False,
         )
 
     def _create_tables(self) -> None:
@@ -51,11 +56,9 @@ class PersistenceManager:
 
         Base.metadata.create_all(self.engine)
 
-    @with_session
     def log_buffer(
         self,
-        session: Session,
-        collection_name: str,
+        collection_id: int,
         timestamp: datetime,
         buffer_id,
         size: int,
@@ -65,7 +68,7 @@ class PersistenceManager:
         """
         Log the buffer in the database
         :param session: The session to use
-        :param collection_name: The name of the collection
+        :param collection_id: The id of the collection
         :param timestamp: The timestamp of the buffer
         :param buffer_id: The id of the buffer
         :param size: The size of the buffer
@@ -73,25 +76,18 @@ class PersistenceManager:
         :param content_type: The data type of the buffer
         :return: None
         """
-
-        collection = self.get_collection_by_name(collection_name)
-
-        buffered_fragment = BufferedFragment(
-            collection_id=collection.id,
-            timestamp=timestamp,
-            size=size,
-            original_size=original_size,
-            content_type=content_type,
-            uuid=buffer_id,
+        self.protected_session.execute(
+            text(
+                "INSERT INTO buffered_fragment (collection_id, timestamp, size, original_size, content_type, uuid,locked) "
+                f"VALUES ('{collection_id}', '{timestamp}', {size}, {original_size}, {content_type}, '{buffer_id}', FALSE)"
+            ),
         )
-
-        session.add(buffered_fragment)
-        session.commit()
+        self.protected_session.commit()
 
     @with_session
     def create_collection(
         self, session: Session, collection_name: str, allow_existing: bool = False
-    ) -> None:
+    ) -> Collection:
         """
         Create a new collection with the given name.
         :param collection_name: The name of the collection to create
@@ -104,6 +100,7 @@ class PersistenceManager:
             collection = Collection(name=collection_name)
             session.add(collection)
             session.commit()
+            return collection
         except IntegrityError:
             # If the collection already exists, rollback the transaction
 
@@ -121,7 +118,6 @@ class PersistenceManager:
         """
 
         # Create an aggregate query to get all collections + add min/max timestamp and count
-        # noinspection PyTypeChecker
         results = (
             session.query(
                 Collection,
@@ -199,6 +195,7 @@ class PersistenceManager:
             .distinct()
         )
 
+    @lru_cache(maxsize=128)
     @with_session
     def get_collection_by_name(
         self, session: Session, collection_name: str
@@ -215,10 +212,8 @@ class PersistenceManager:
         except NoResultFound:
             raise AnotherWorldException(f"Collection {collection_name} does not exist")
 
-    @with_session
     def query(
         self,
-        session: Session,
         collection: Collection,
         min_timestamp: datetime,
         max_timestamp: datetime,
@@ -238,7 +233,7 @@ class PersistenceManager:
         :param content_types: The data types to filter the data with
         :return: The list of fragments in the collection with the given name
         """
-        query = session.query(Item).filter(
+        query = self.protected_session.query(Item).filter(
             Item.collection_id == collection.id,
             Item.timestamp >= min_timestamp,
             Item.timestamp <= max_timestamp,
@@ -252,7 +247,7 @@ class PersistenceManager:
         results = query.limit(limit).all()
 
         # Query the fragments
-        fragments = session.query(Fragment).filter(
+        fragments = self.protected_session.query(Fragment).filter(
             Fragment.uuid.in_([result.fragment_id for result in results])
         )
 
@@ -389,10 +384,13 @@ class PersistenceManager:
             .all()
         )
 
-        # Lock the buffered fragments
-        for buffered_fragment in buffered_fragments:
-            buffered_fragment.locked = True
-            session.add(buffered_fragment)
+        session.execute(
+            text(
+                f"UPDATE buffered_fragment SET locked = TRUE WHERE collection_id = {collection.id} AND locked = FALSE"
+            )
+        )
+
+        session.commit()
 
         # noinspection PyTypeChecker
         return buffered_fragments
@@ -412,16 +410,14 @@ class PersistenceManager:
 
         # Get the size of the buffered fragments
         return (
-            session.query(func.sum(BufferedFragment.size))
+            session.query(func.sum(BufferedFragment.original_size))
             .filter_by(collection_id=collection.id, locked=False)
             .scalar()
             or 0
         )
 
-    @with_session
     def query_buffers_no_lock(
         self,
-        session: Session,
         collection: Collection | str,
         min_timestamp: datetime = None,
         max_timestamp: datetime = None,
@@ -434,7 +430,6 @@ class PersistenceManager:
         :param collection: The collection to get the buffered fragment for
         :param min_timestamp: The minimum timestamp to filter the buffered fragments
         :param max_timestamp: The maximum timestamp to filter the buffered fragments
-
         :return: The buffered fragment for the given collection
         """
 
@@ -443,7 +438,7 @@ class PersistenceManager:
 
         # In one transaction, get all non-locked buffered fragments for the collection, lock them, and return them
         # noinspection PyTypeChecker
-        buffered_fragments = session.query(BufferedFragment).filter_by(
+        buffered_fragments = self.protected_session.query(BufferedFragment).filter_by(
             collection_id=collection.id
         )
 
@@ -478,7 +473,7 @@ class PersistenceManager:
         """
 
         collection = self.get_collection_by_name(collection_name)
-
+        self.get_collection_by_name.cache_clear()
         # Delete the items
         session.query(Item).filter_by(collection_id=collection.id).delete()
 
@@ -492,3 +487,19 @@ class PersistenceManager:
         session.query(Collection).filter_by(id=collection.id).delete()
 
         session.commit()
+
+    @with_session
+    def get_items_from_fragments(self, session: Session, fragments: List[Fragment]):
+        """
+        Get the items from the fragments.
+        :param session: The session to use
+        :param fragments: The fragments to get the items from
+        :return: The items from the fragments
+        """
+
+        # Get the items from the fragments
+        return (
+            session.query(Item)
+            .filter(Item.fragment_id.in_([fragment.uuid for fragment in fragments]))
+            .all()
+        )

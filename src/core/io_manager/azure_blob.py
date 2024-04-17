@@ -136,3 +136,12 @@ class AzureBlobIOManager(LoggableComponent, IOManager):
         )
 
         return connection
+
+    def get_collection_size(self, collection_name: str) -> int:
+        collection_name = self._sanitize_collection_name(collection_name)
+
+        container = self.client.get_container_client(self.container_name)
+        size = 0
+        for blob in container.list_blobs(name_starts_with=collection_name + "/"):
+            size += blob.size
+        return size

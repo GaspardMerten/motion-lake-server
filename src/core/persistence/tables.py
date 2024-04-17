@@ -3,7 +3,6 @@
 
 from sqlalchemy import ForeignKey, DateTime
 from sqlalchemy import String
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -27,7 +26,6 @@ class Fragment(Base):
 
     uuid: Mapped[str] = mapped_column(primary_key=True)
     content_type: Mapped[int] = mapped_column(nullable=True)
-    internal_metadata: Mapped[dict] = mapped_column(JSONB, nullable=True)
     collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"))
 
     def __repr__(self) -> str:
@@ -38,11 +36,13 @@ class BufferedFragment(Base):
     __tablename__ = "buffered_fragment"
 
     timestamp: Mapped[str] = mapped_column(DateTime, primary_key=True)
-    collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id"))
+    collection_id: Mapped[int] = mapped_column(
+        ForeignKey("collection.id"), primary_key=True
+    )
     content_type: Mapped[int] = mapped_column()
     size: Mapped[int] = mapped_column()
     original_size: Mapped[int] = mapped_column()
-    uuid: Mapped[str] = mapped_column(primary_key=True)
+    uuid: Mapped[str] = mapped_column()
     locked: Mapped[bool] = mapped_column(default=False)
 
     def __repr__(self) -> str:

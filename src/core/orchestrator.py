@@ -159,3 +159,12 @@ class Orchestrator(LoggableComponent):
         """
 
         return self._engine.delete_collection(collection_name)
+
+    def get_collection_size(self, collection_name: str) -> int:
+        """
+        Get the size of the collection with the given name.
+        :param collection_name: The name of the collection
+        :return: The size of the collection
+        """
+
+        return self._engine.get_collection_size(collection_name)

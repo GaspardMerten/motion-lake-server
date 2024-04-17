@@ -107,3 +107,12 @@ class IOManager(Protocol):
         :return: A connection to a DuckDB database
         """
         return duckdb.connect()
+
+    def get_collection_size(self, collection_name: str) -> int:
+        """
+        This method should return the size in bytes of the collection corresponding to the given collection name.
+
+        :param collection_name: The name of the collection
+        :return: The size of the collection
+        """
+        ...

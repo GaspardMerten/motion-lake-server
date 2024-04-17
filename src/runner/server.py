@@ -7,6 +7,7 @@ from datetime import datetime
 
 import fastapi
 from pydantic import BaseModel
+from starlette import status
 
 from src.core.bridge.parquet_bridge import ParquetBridge
 from src.core.io_manager.azure_blob import AzureBlobIOManager
@@ -24,11 +25,7 @@ app = fastapi.FastAPI()
 
 
 core = Orchestrator(
-    PersistenceManager(
-        os.environ.get(
-            "DB_URL", "postgresql://postgres:postgres@localhost:5428/postgres"
-        )
-    ),
+    PersistenceManager(os.environ.get("DB_URL", "sqlite:///another_world.db")),
     (
         AzureBlobIOManager()
         if os.environ.get("IO_MANAGER", "file_system") == "azure_blob"
@@ -42,15 +39,17 @@ core = Orchestrator(
 
 
 @app.get("/collections/")
-async def all_collections():
+async def all_collections(response: fastapi.Response):
     try:
         return core.list_collections()
     except AnotherWorldException as e:
+        response.status_code = status.HTTP_400_BAD_REQUEST
         return {"error": str(e)}
 
 
 @app.get("/query/{collection_name}")
 async def query_collection(
+    response: fastapi.Response,
     collection_name: str,
     min_timestamp: int,
     max_timestamp: int,
@@ -83,6 +82,7 @@ async def query_collection(
             skip_data,
         )
     except AnotherWorldException as e:
+        response.status_code = status.HTTP_400_BAD_REQUEST
         return {"results": [], "error": str(e)}
     formatted_results = [
         {"data": result[0].hex() if result[0] else "", "timestamp": result[1]}
@@ -97,7 +97,7 @@ class CollectionRequest(BaseModel):
 
 
 @app.post("/flush/{collection_name}")
-async def flush_buffer(collection_name: str):
+async def flush_buffer(response: fastapi.Response, collection_name: str):
     """
     Flush the buffered data in the collection with the given name.
     :param collection_name: The name of the collection to flush
@@ -106,13 +106,14 @@ async def flush_buffer(collection_name: str):
     try:
         core.flush(collection_name)
     except AnotherWorldException as e:
-        return {"error": str(e)}, 400
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"error": str(e)}
 
     return {"message": "Buffer flushed successfully"}
 
 
 @app.post("/collection/")
-async def create_collection(collection: CollectionRequest):
+async def create_collection(response: fastapi.Response, collection: CollectionRequest):
     """
     Create a new collection with the given name.
     :param collection: The name of the collection to create
@@ -121,7 +122,8 @@ async def create_collection(collection: CollectionRequest):
     try:
         core.create_collection(collection.name, allow_existing=True)
     except AnotherWorldException as e:
-        return {"error": str(e)}, 400
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"error": str(e)}
 
     return {"message": "Collection created successfully"}
 
@@ -134,7 +136,9 @@ class StoreRequest(BaseModel):
 
 
 @app.post("/store/{collection_name}/")
-async def store_data(request: StoreRequest, collection_name: str):
+async def store_data(
+    response: fastapi.Response, request: StoreRequest, collection_name: str
+):
     """
     Store the given data in the collection with the given name. The data will be stored in a
     :param request: The request body
@@ -156,7 +160,8 @@ async def store_data(request: StoreRequest, collection_name: str):
             create_collection=request.create_collection,
         )
     except AnotherWorldException as e:
-        return {"error": str(e)}, 400
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"error": str(e)}
 
     return {"message": "Data stored successfully"}
 
@@ -168,7 +173,9 @@ class AdvancedQueryRequest(BaseModel):
 
 
 @app.post("/advanced/{collection_name}/")
-async def advanced_query(request: AdvancedQueryRequest, collection_name: str):
+async def advanced_query(
+    response: fastapi.Response, request: AdvancedQueryRequest, collection_name: str
+):
     """
     Perform an advanced query on the given collection.
     :param request: The request body
@@ -184,13 +191,14 @@ async def advanced_query(request: AdvancedQueryRequest, collection_name: str):
             collection_name, request.query, min_timestamp, max_timestamp
         )
     except AnotherWorldException as e:
-        return {"results": [], "error": str(e)}, 400
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"results": [], "error": str(e)}
 
     return {"results": results}
 
 
 @app.delete("/delete/{collection_name}")
-async def delete_collection(collection_name: str):
+async def delete_collection(response: fastapi.Response, collection_name: str):
     """
     Delete the collection with the given name.
     :param collection_name: The name of the collection to delete
@@ -199,6 +207,23 @@ async def delete_collection(collection_name: str):
     try:
         core.delete_collection(collection_name)
     except AnotherWorldException as e:
-        return {"error": str(e)}, 400
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"error": str(e)}
 
     return {"message": "Collection deleted successfully"}
+
+
+@app.get("/size/{collection_name}")
+async def get_collection_size(response: fastapi.Response, collection_name: str):
+    """
+    Get the size of the collection with the given name.
+    :param collection_name: The name of the collection
+    :return: The size of the collection
+    """
+    try:
+        size = core.get_collection_size(collection_name)
+    except AnotherWorldException as e:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"error": str(e)}
+
+    return {"size": size}
