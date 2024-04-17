@@ -87,6 +87,7 @@ class ParquetBridge(LoggableComponent):
         :param bytes_data: The data to write as bytes
         :param timestamp: The timestamp of the data
         :param output: The output stream to write the data to
+        :param collection_name: The name of the collection to write the data to
         :param content_type: The data type of the data to write
         :return: A dictionary with the metadata of the written data
 
@@ -114,6 +115,11 @@ class ParquetBridge(LoggableComponent):
 
         used_cache = False
 
+        if not representation and content_type != ContentType.RAW:
+            return self.write_single(
+                bytes_data, timestamp, output, collection_name, ContentType.RAW
+            )
+
         try:
             # noinspection PyArgumentList
             schema, used_cache = self.infer_schema(
@@ -126,6 +132,7 @@ class ParquetBridge(LoggableComponent):
                     bytes_data, timestamp, output, collection_name, ContentType.RAW
                 )
 
+            # noinspection PyArgumentList
             table = pa.Table.from_pydict(
                 {
                     "data": [representation],
