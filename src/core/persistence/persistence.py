@@ -56,8 +56,10 @@ class PersistenceManager:
 
         Base.metadata.create_all(self.engine)
 
+    @with_session
     def log_buffer(
         self,
+        session: Session,
         collection_id: int,
         timestamp: datetime,
         buffer_id,
@@ -76,13 +78,12 @@ class PersistenceManager:
         :param content_type: The data type of the buffer
         :return: None
         """
-        self.protected_session.execute(
+        session.execute(
             text(
                 "INSERT INTO buffered_fragment (collection_id, timestamp, size, original_size, content_type, uuid,locked) "
                 f"VALUES ('{collection_id}', '{timestamp}', {size}, {original_size}, {content_type}, '{buffer_id}', FALSE)"
             ),
         )
-        self.protected_session.commit()
 
     @with_session
     def create_collection(
