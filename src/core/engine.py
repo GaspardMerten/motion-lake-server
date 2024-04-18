@@ -4,6 +4,7 @@ import itertools
 import os
 from collections import defaultdict
 from datetime import datetime
+from hashlib import md5
 from typing import List, Tuple, Union
 from uuid import uuid4
 
@@ -32,6 +33,7 @@ class Engine(LoggableComponent):
         self.io_manager = io_manager
         self.persistence_manager = persistence_manager
         self.startup_lock = FileLock("startup.lock")
+        self.hash_cache = {}
 
     def create_collection(
         self, collection_name: str, allow_existing: bool = False
@@ -81,8 +83,20 @@ class Engine(LoggableComponent):
         :param create_collection: Whether to create the collection if it does not exist
         :return: None
         """
-
         collection = self.check_collection(collection_name, create_collection)
+        data_hash = md5(data).hexdigest()
+
+        if collection_name not in self.hash_cache:
+            self.hash_cache[collection_name] = self.persistence_manager.get_last_hash(
+                collection_name
+            )
+
+        # Prevent data duplication
+        if self.hash_cache.get(collection_name) == data_hash:
+            print("Skipping")
+            return
+        else:
+            self.hash_cache[collection_name] = data_hash
 
         buffer_uuid = str(uuid4())
 
@@ -102,6 +116,7 @@ class Engine(LoggableComponent):
             result.size,
             result.original_size,
             result.content_type,
+            data_hash,
         )
 
         if (
@@ -228,17 +243,20 @@ class Engine(LoggableComponent):
         fragments = self.persistence_manager.query(
             collection, min_timestamp, max_timestamp, ascending, limit
         )
-        buffers = self.persistence_manager.query_buffers_no_lock(
+        buffers = self.persistence_manager.query_buffers_do_not_lock(
             collection, min_timestamp, max_timestamp, ascending, limit
         )
-
         if skip_data:
             items = self.persistence_manager.get_items_from_fragments(fragments)
-
-            return [
+            data = [
                 (None, int(item.timestamp.timestamp()))
                 for item in itertools.chain(items, buffers)
+                if min_timestamp <= item.timestamp <= max_timestamp
             ]
+
+            data.sort(key=lambda x: x[1], reverse=not ascending)
+            data = data[offset:limit] if limit else data[offset:]
+            return data
 
         result = []
 
@@ -314,7 +332,7 @@ class Engine(LoggableComponent):
             True,
             content_types=[ContentType.JSON, ContentType.GTFS_RT],
         )
-        buffers = self.persistence_manager.query_buffers_no_lock(
+        buffers = self.persistence_manager.query_buffers_do_not_lock(
             collection, min_timestamp, max_timestamp
         )
 

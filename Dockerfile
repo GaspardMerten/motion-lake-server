@@ -10,4 +10,4 @@ WORKDIR /app
 RUN pip install -r requirements.txt
 
 # RUN THE cli.py FILE  with all the arguments (from environment variables)
-CMD ["python", "cli.py"]
+CMD ["/app/launcher.sh"]

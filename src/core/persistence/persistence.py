@@ -66,6 +66,7 @@ class PersistenceManager:
         size: int,
         original_size: int,
         content_type: int,
+        data_hash: str,
     ):
         """
         Log the buffer in the database
@@ -76,12 +77,13 @@ class PersistenceManager:
         :param size: The size of the buffer
         :param original_size: The original size of the buffer
         :param content_type: The data type of the buffer
+        :param data_hash: The hash of the original data
         :return: None
         """
         session.execute(
             text(
-                "INSERT INTO buffered_fragment (collection_id, timestamp, size, original_size, content_type, uuid,locked) "
-                f"VALUES ('{collection_id}', '{timestamp}', {size}, {original_size}, {content_type}, '{buffer_id}', FALSE)"
+                "INSERT INTO buffered_fragment (collection_id, timestamp, size, original_size, content_type, uuid,locked, hash) "
+                f"VALUES ('{collection_id}', '{timestamp}', {size}, {original_size}, {content_type}, '{buffer_id}', FALSE, '{data_hash}')"
             ),
         )
 
@@ -196,7 +198,7 @@ class PersistenceManager:
             .distinct()
         )
 
-    @lru_cache(maxsize=128)
+    @lru_cache(maxsize=256)
     @with_session
     def get_collection_by_name(
         self, session: Session, collection_name: str
@@ -296,6 +298,7 @@ class PersistenceManager:
                 timestamp=buffer_fragment.timestamp,
                 size=buffer_fragment.size,
                 original_size=buffer_fragment.original_size,
+                hash=buffer_fragment.hash,
             )
 
             session.add(item)
@@ -351,6 +354,7 @@ class PersistenceManager:
                 size=buffered_fragment.size,
                 content_type=buffered_fragment.content_type,
                 original_size=buffered_fragment.original_size,
+                hash=buffered_fragment.hash,
             )
 
             session.add(item)
@@ -417,7 +421,7 @@ class PersistenceManager:
             or 0
         )
 
-    def query_buffers_no_lock(
+    def query_buffers_do_not_lock(
         self,
         collection: Collection | str,
         min_timestamp: datetime = None,
@@ -504,3 +508,37 @@ class PersistenceManager:
             .filter(Item.fragment_id.in_([fragment.uuid for fragment in fragments]))
             .all()
         )
+
+    @with_session
+    def get_last_hash(self, session: Session, collection_name: str) -> int | None:
+        """
+        Get the last hash of the collection (last buffer if any, last item otherwise, None if empty).
+        :param collection_name: The name of the collection
+        :return: The last hash of the collection
+        """
+
+        collection = self.get_collection_by_name(collection_name)
+
+        # Get the last buffer
+        last_buffer = (
+            session.query(BufferedFragment)
+            .filter_by(collection_id=collection.id)
+            .order_by(BufferedFragment.timestamp.desc())
+            .first()
+        )
+
+        if last_buffer:
+            return last_buffer.hash
+
+        # Get the last item
+        last_item = (
+            session.query(Item)
+            .filter_by(collection_id=collection.id)
+            .order_by(Item.timestamp.desc())
+            .first()
+        )
+
+        if last_item:
+            return last_item.hash
+
+        return None

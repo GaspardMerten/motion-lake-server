@@ -44,6 +44,7 @@ class BufferedFragment(Base):
     original_size: Mapped[int] = mapped_column()
     uuid: Mapped[str] = mapped_column()
     locked: Mapped[bool] = mapped_column(default=False)
+    hash: Mapped[str] = mapped_column()
 
     def __repr__(self) -> str:
         return f"BufferedFragment(uuid={self.uuid!r})"
@@ -62,3 +63,4 @@ class Item(Base):
     size: Mapped[int] = mapped_column()
     original_size: Mapped[int] = mapped_column()
     content_type: Mapped[int] = mapped_column()
+    hash: Mapped[str] = mapped_column()

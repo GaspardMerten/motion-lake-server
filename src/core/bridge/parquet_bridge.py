@@ -250,7 +250,9 @@ class ParquetBridge(LoggableComponent):
                 ("timestamp", "<=", int(where["max_timestamp"].timestamp()))
             )
 
-        data = polars.read_parquet(reader, use_pyarrow=True)
+        data = polars.read_parquet(
+            reader, use_pyarrow=True, pyarrow_options=dict(filters=table_filters)
+        )
 
         filtered_data = []
 

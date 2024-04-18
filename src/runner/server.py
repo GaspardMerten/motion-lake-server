@@ -1,8 +1,7 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
-
-
 import os
+import resource
 from datetime import datetime
 
 import fastapi
@@ -135,6 +134,18 @@ class StoreRequest(BaseModel):
     create_collection: bool = False
 
 
+def using(point=""):
+    # Retrieve current heap usage
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    return f"[MEM] {point}: {usage.ru_maxrss / 1024:.2f} MB"
+
+
+def get_usage() -> float:
+    # Retrieve current heap usage
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    return usage.ru_maxrss / 1024
+
+
 @app.post("/store/{collection_name}/")
 async def store_data(
     response: fastapi.Response, request: StoreRequest, collection_name: str
@@ -145,8 +156,10 @@ async def store_data(
     :param collection_name: The name of the collection to store the data in
     :return:
     """
+
     # Convert timestamp to datetime
     timestamp = datetime.fromtimestamp(request.timestamp)
+
     try:
         core.store(
             collection_name,
