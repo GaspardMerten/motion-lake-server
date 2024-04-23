@@ -7,6 +7,8 @@ import os
 
 import uvicorn
 
+from uvicorn.workers import UvicornWorker
+
 
 def main():
     # Setting up the argument parser
@@ -36,14 +38,6 @@ def main():
         default=os.environ.get("LOG_LEVEL", "WARNING"),
         help="Logging level, default is WARNING",
     )
-    parser.add_argument(
-        "--db-url",
-        type=str,
-        default=os.environ.get(
-            "DB_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
-        ),
-        help="Database URL, default is postgresql://postgres:postgres@localhost:5432/postgres",
-    )
 
     args = parser.parse_args()
 
@@ -60,8 +54,8 @@ def main():
         host=args.ip,
         port=args.port,
         workers=args.threads,
-        lifespan="on",
-        limit_max_requests=20,
+        limit_max_requests=1,
+        reload=True,
     )
 
 

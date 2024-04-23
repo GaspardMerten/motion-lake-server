@@ -3,7 +3,6 @@
 import gc
 import json
 import os
-import resource
 from datetime import datetime
 
 import fastapi
@@ -129,12 +128,6 @@ async def create_collection(response: fastapi.Response, collection: CollectionRe
     return {"message": "Collection created successfully"}
 
 
-def using(point=""):
-    # Retrieve current heap usage
-    usage = resource.getrusage(resource.RUSAGE_SELF)
-    return f"[MEM] {point}: {usage.ru_maxrss / 1024:.2f} MB"
-
-
 @app.post("/store/{collection_name}/")
 async def store_data(
     response: fastapi.Response, request: fastapi.Request, collection_name: str
@@ -149,7 +142,7 @@ async def store_data(
     :return:
     """
     data = await request.body()
-    # Split b'\n' separated data
+
     metadata, bytes_data = data.split(b"\n", 1)
     metadata = json.loads(metadata)
     # Convert timestamp to datetime

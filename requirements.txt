@@ -16,5 +16,7 @@ pydantic~=2.6.4
 duckdb==0.10.1
 azure-storage-blob
 azure-identity
-polars
-ujson
+polars~=0.20.21
+ujson~=5.9.0
+psutil~=5.9.8
+gunicorn~=22.0.0
