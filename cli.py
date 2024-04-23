@@ -56,7 +56,12 @@ def main():
 
     # Running the FastAPI app with Uvicorn
     uvicorn.run(
-        "src.runner.server:app", host=args.ip, port=args.port, workers=args.threads
+        "src.runner.server:app",
+        host=args.ip,
+        port=args.port,
+        workers=args.threads,
+        lifespan="on",
+        limit_max_requests=20,
     )
 
 

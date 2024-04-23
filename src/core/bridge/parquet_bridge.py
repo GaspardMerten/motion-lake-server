@@ -1,6 +1,5 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
-
 from datetime import datetime
 from io import BytesIO
 from typing import List, Tuple, Iterable
@@ -19,15 +18,15 @@ from src.core.models import ContentType, BridgeResult
 from src.core.utils.exception import AnotherWorldException
 
 MAPPING = {
-    ContentType.JSON: JSONParser(),
-    ContentType.GTFS_RT: GTFSRTParser(),
-    ContentType.RAW: BytesParser(),
+    ContentType.JSON: JSONParser,
+    ContentType.GTFS_RT: GTFSRTParser,
+    ContentType.RAW: BytesParser,
     # ContentType.GTFS: GTFSParser(),
 }
 
 
 def get_parser(content_type: ContentType):
-    return MAPPING.get(content_type, BytesParser())
+    return MAPPING.get(content_type, BytesParser)()
 
 
 class ParquetBridge(LoggableComponent):
@@ -68,7 +67,7 @@ class ParquetBridge(LoggableComponent):
             raise AnotherWorldException(f"Error while writing parquet file: {e}")
         return output
 
-    def write_single(
+    async def write_single(
         self,
         bytes_data: bytes,
         timestamp: datetime,
@@ -93,45 +92,25 @@ class ParquetBridge(LoggableComponent):
 
         :raises AnotherWorldException: If the data type is RAW and the data cannot be written
         """
+        # tmp force RAW
         content_type = content_type if content_type is not None else ContentType.RAW
-        parser = get_parser(content_type)
 
         # Try to parse the data, and if it fails, write it as raw data
-        try:
-            representation = parser.parse(bytes_data)
-        except MissMatchingTypesException:
-            # If the data type is RAW, and the parsing fails, raise an exception
-            if content_type == ContentType.RAW:
-                self.log_error(
-                    "Cannot write raw data to parquet, even if it's not parsed"
-                )
-                raise AnotherWorldException(
-                    "Cannot write raw data to parquet, even if it's not parsed"
-                )
-
-            return self.write_single(
-                bytes_data, timestamp, output, collection_name, ContentType.RAW
-            )
-
-        used_cache = False
-
-        if not representation and content_type != ContentType.RAW:
-            return self.write_single(
-                bytes_data, timestamp, output, collection_name, ContentType.RAW
-            )
+        representation, content_type = await self.parse_data(bytes_data, content_type)
 
         try:
             # noinspection PyArgumentList
             schema, used_cache = self.infer_schema(
                 representation, collection_name, content_type
             )
+        except (AnotherWorldException, ArrowInvalid) as e:
+            if content_type == ContentType.RAW:
+                raise e
+            return await self.write_single(
+                bytes_data, timestamp, output, collection_name, ContentType.RAW
+            )
 
-            # If the schema is too large, use binary representation
-            if len(str(schema).split("\n")) > 100:
-                return self.write_single(
-                    bytes_data, timestamp, output, collection_name, ContentType.RAW
-                )
-
+        try:
             # noinspection PyArgumentList
             table = pa.Table.from_pydict(
                 {
@@ -144,19 +123,16 @@ class ParquetBridge(LoggableComponent):
             if used_cache:
                 del self.schema_cache[(collection_name, content_type)]
                 # Remove the cache and try again
-                return self.write_single(
+                return await self.write_single(
                     bytes_data, timestamp, output, collection_name, content_type
                 )
 
             self.log_error(f"Error while creating parquet table: {e}")
-            return self.write_single(
+            return await self.write_single(
                 bytes_data, timestamp, output, collection_name, ContentType.RAW
             )
 
-        try:
-            output = self._table_to_bytes(table, output, snappy=True)
-        except AnotherWorldException as e:
-            raise e
+        output = self._table_to_bytes(table, output, snappy=True)
 
         # Return number of bytes and final data type
         return BridgeResult(
@@ -164,6 +140,28 @@ class ParquetBridge(LoggableComponent):
             size=output.tell(),
             original_size=len(bytes_data),
         )
+
+    async def parse_data(self, bytes_data: bytes, content_type: ContentType) -> object:
+        """
+        Parse the data using the given data type. If the data type is not supported, the method will try to parse the
+        data as raw data.
+        """
+
+        try:
+            parser = get_parser(content_type)
+            result = await parser.parse(bytes_data)
+            if not result and content_type != ContentType.RAW:
+                raise MissMatchingTypesException(
+                    "Parser returned an empty object, pyarrow cannot infer schema"
+                )
+            return result, content_type
+        except MissMatchingTypesException:
+            if content_type == ContentType.RAW:
+                error_msg = "Cannot write raw data to parquet, even if it's not parsed"
+                self.log_error(error_msg)
+                raise AnotherWorldException(error_msg)
+            else:
+                return await self.parse_data(bytes_data, ContentType.RAW)
 
     def infer_schema(
         self, representation, collection_name: str, content_type: ContentType
@@ -176,6 +174,8 @@ class ParquetBridge(LoggableComponent):
                 pa.field("timestamp", pa.int64()),
             ]
         )
+        if len(str(schema).split("\n")) > 100:
+            raise AnotherWorldException("Schema too large")
         self.schema_cache[(collection_name, content_type)] = schema
 
         return schema, False

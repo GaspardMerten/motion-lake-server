@@ -294,6 +294,7 @@ class PersistenceManager:
 
             item = Item(
                 fragment_id=fragment.uuid,
+                content_type=buffer_fragment.content_type,
                 collection_id=collection.id,
                 timestamp=buffer_fragment.timestamp,
                 size=buffer_fragment.size,

@@ -1,5 +1,7 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
+import gc
+import json
 import os
 import resource
 from datetime import datetime
@@ -127,54 +129,49 @@ async def create_collection(response: fastapi.Response, collection: CollectionRe
     return {"message": "Collection created successfully"}
 
 
-class StoreRequest(BaseModel):
-    timestamp: int | float
-    data: str
-    content_type: int | None
-    create_collection: bool = False
-
-
 def using(point=""):
     # Retrieve current heap usage
     usage = resource.getrusage(resource.RUSAGE_SELF)
     return f"[MEM] {point}: {usage.ru_maxrss / 1024:.2f} MB"
 
 
-def get_usage() -> float:
-    # Retrieve current heap usage
-    usage = resource.getrusage(resource.RUSAGE_SELF)
-    return usage.ru_maxrss / 1024
-
-
 @app.post("/store/{collection_name}/")
 async def store_data(
-    response: fastapi.Response, request: StoreRequest, collection_name: str
+    response: fastapi.Response, request: fastapi.Request, collection_name: str
 ):
     """
     Store the given data in the collection with the given name. The data will be stored in a
+    buffered fragment until it is flushed to a new fragment. The data will be associated with
+    the given timestamp. An optional data type can be provided to specify the type of the data.
+    :param response: The response
     :param request: The request body
     :param collection_name: The name of the collection to store the data in
     :return:
     """
-
+    data = await request.body()
+    # Split b'\n' separated data
+    metadata, bytes_data = data.split(b"\n", 1)
+    metadata = json.loads(metadata)
     # Convert timestamp to datetime
-    timestamp = datetime.fromtimestamp(request.timestamp)
-
+    timestamp = datetime.fromtimestamp(metadata["timestamp"])
     try:
-        core.store(
+        await core.store(
             collection_name,
             timestamp,
-            bytes.fromhex(request.data),
+            bytes_data,
             content_type=(
-                ContentType(request.content_type)
-                if request.content_type is not None
+                ContentType(metadata["content_type"])
+                if "content_type" in metadata
                 else None
             ),
-            create_collection=request.create_collection,
+            create_collection=metadata.get("create_collection", False),
         )
     except AnotherWorldException as e:
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"error": str(e)}
+    finally:
+        del data
+        gc.collect()
 
     return {"message": "Data stored successfully"}
 

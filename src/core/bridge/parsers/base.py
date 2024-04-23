@@ -9,7 +9,7 @@ class MissMatchingTypesException(Exception):
 
 
 class BaseParser(Protocol):
-    def parse(self, data: bytes) -> bytes | str | object | None:
+    async def parse(self, data: bytes) -> bytes | str | object | None:
         """
         Parse the data from the byte stream to the desired format.
         :param data: The data to parse
@@ -18,7 +18,7 @@ class BaseParser(Protocol):
         """
         ...
 
-    def serialize(self, data: bytes | str | object | dict) -> bytes:
+    async def serialize(self, data: bytes | str | object | dict) -> bytes:
         """
         Serialize the data to the byte stream.
         :param data: The data to serialize

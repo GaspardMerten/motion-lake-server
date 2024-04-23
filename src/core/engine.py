@@ -18,7 +18,7 @@ from src.core.persistence.persistence import PersistenceManager
 from src.core.persistence.tables import Collection
 from src.core.utils.exception import AnotherWorldException
 
-DEFAULT_BUFFER_SIZE = 6  # 6 MB
+DEFAULT_BUFFER_SIZE = 10  # 10 MB
 
 
 class Engine(LoggableComponent):
@@ -61,7 +61,7 @@ class Engine(LoggableComponent):
 
         return self.persistence_manager.get_collections()
 
-    def store(
+    async def store(
         self,
         collection_name: str,
         timestamp: datetime,
@@ -93,7 +93,6 @@ class Engine(LoggableComponent):
 
         # Prevent data duplication
         if self.hash_cache.get(collection_name) == data_hash:
-            print("Skipping")
             return
         else:
             self.hash_cache[collection_name] = data_hash
@@ -101,13 +100,18 @@ class Engine(LoggableComponent):
         buffer_uuid = str(uuid4())
 
         with self.io_manager.get_write_context(collection_name, buffer_uuid) as output:
-            result = self.bridge.write_single(
-                collection_name=collection_name,
-                bytes_data=data,
-                timestamp=timestamp,
-                output=output,
-                content_type=content_type,
-            )
+            try:
+                result = await self.bridge.write_single(
+                    collection_name=collection_name,
+                    bytes_data=data,
+                    timestamp=timestamp,
+                    output=output,
+                    content_type=content_type,
+                )
+            except Exception as e:
+                raise e
+            finally:
+                del data
 
         self.persistence_manager.log_buffer(
             collection.id,

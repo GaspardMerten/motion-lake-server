@@ -63,7 +63,7 @@ class Orchestrator(LoggableComponent):
 
         return self._engine.list_collections()
 
-    def store(
+    async def store(
         self,
         collection_name: str,
         timestamp: datetime,
@@ -86,7 +86,7 @@ class Orchestrator(LoggableComponent):
         :return: None
         """
 
-        return self._engine.store(
+        return await self._engine.store(
             collection_name, timestamp, data, content_type, create_collection
         )
 
