@@ -237,7 +237,7 @@ class ParquetBridge(LoggableComponent):
         """
 
         content_type = ContentType(content_type)
-        serialize = MAPPING.get(content_type, BytesParser()).serialize
+        serialize = MAPPING.get(content_type, BytesParser)().serialize
 
         table_filters = []
 
