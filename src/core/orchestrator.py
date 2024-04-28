@@ -90,7 +90,7 @@ class Orchestrator(LoggableComponent):
             collection_name, timestamp, data, content_type, create_collection
         )
 
-    def query(
+    async def query(
         self,
         collection_name: str,
         min_timestamp: datetime = datetime(1970, 1, 1),
@@ -112,7 +112,7 @@ class Orchestrator(LoggableComponent):
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
 
-        return self._engine.query(
+        return await self._engine.query(
             collection_name,
             min_timestamp,
             max_timestamp,

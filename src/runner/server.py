@@ -72,7 +72,7 @@ async def query_collection(
     max_timestamp = datetime.fromtimestamp(max_timestamp)
 
     try:
-        results = core.query(
+        results = await core.query(
             collection_name,
             min_timestamp,
             max_timestamp,

@@ -214,7 +214,7 @@ class Engine(LoggableComponent):
         with self.io_manager.get_read_context(collection_name, buffer_uuid) as f:
             return f.read()
 
-    def query(
+    async def query(
         self,
         collection_name: str,
         min_timestamp: datetime,
@@ -266,7 +266,7 @@ class Engine(LoggableComponent):
 
         for item in itertools.chain(fragments, buffers):
             result.extend(
-                self._get_fragment_items(
+                await self._get_fragment_items(
                     collection,
                     item.uuid,
                     item.content_type,
@@ -292,7 +292,7 @@ class Engine(LoggableComponent):
 
         return result
 
-    def _get_fragment_items(
+    async def _get_fragment_items(
         self,
         collection,
         fragment_uuid,
@@ -303,7 +303,7 @@ class Engine(LoggableComponent):
         limit,
     ) -> List[Tuple[bytes, datetime]]:
         with self.io_manager.get_read_context(collection.name, fragment_uuid) as f:
-            result = self.bridge.read(
+            result = await self.bridge.read(
                 f,
                 content_type=content_type,
                 where={"min_timestamp": min_timestamp, "max_timestamp": max_timestamp},

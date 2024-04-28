@@ -213,7 +213,7 @@ class ParquetBridge(LoggableComponent):
         return table and self._table_to_bytes(table, BytesIO()), skipped
 
     @staticmethod
-    def read(
+    async def read(
         reader: BytesIO,
         content_type: ContentType,
         where: {},
@@ -266,7 +266,7 @@ class ParquetBridge(LoggableComponent):
         for row in data.rows():
             filtered_data.append(
                 (
-                    serialize(row[0]),
+                    await serialize(row[0]),
                     row[1],
                 )
             )

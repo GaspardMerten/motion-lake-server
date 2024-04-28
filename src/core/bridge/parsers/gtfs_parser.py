@@ -42,7 +42,7 @@ def infer_types(content: List[str]) -> List[type]:
 
 
 class GTFSParser(BaseParser):
-    def parse(self, data: bytes) -> bytes | str | object | None:
+    async def parse(self, data: bytes) -> bytes | str | object | None:
         try:
             files = zip_to_dict(data)
             out = {}
@@ -75,7 +75,7 @@ class GTFSParser(BaseParser):
         except Exception as e:
             raise MissMatchingTypesException()
 
-    def serialize(self, data: dict) -> bytes:
+    async def serialize(self, data: dict) -> bytes:
         files = {}
         for file in data:
             out = ""
