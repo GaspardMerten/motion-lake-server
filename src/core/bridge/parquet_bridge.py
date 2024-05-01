@@ -275,22 +275,49 @@ class ParquetBridge(LoggableComponent):
 
     @staticmethod
     def advanced_query(
-        duck_db_connection, files: List[str], query: str, *args, **kwargs
+        duck_db_connection,
+        files: List[str],
+        query: str,
+        min_timestamp: datetime,
+        max_timestamp: datetime,
+        limit: int = None,
+        ascending: bool = True,
+        offset: int = None,
     ):
         """
         Perform an advanced query on the given files.
+        :param duck_db_connection: The connection to the DuckDB database
         :param files: The files to query
         :param query: The query to perform
+        :param min_timestamp: The minimum timestamp to filter the data
+        :param max_timestamp: The maximum timestamp to filter the data
+        :param limit: The limit of the data to retrieve
+        :param ascending: Whether to sort the data in ascending order
+        :param offset: The offset of the data to retrieve
         :return: The result of the query
         """
 
         files_str = ", ".join([f"'{file}'" for file in files])
 
-        table = f"(SELECT * FROM read_parquet([{files_str}], union_by_name=true))"
+        table = (
+            f"SELECT * FROM read_parquet([{files_str}], union_by_name=true) WHERE timestamp "
+            f">= {min_timestamp.timestamp()} AND timestamp <= {max_timestamp.timestamp()}"
+        )
 
+        if ascending:
+            table += " ORDER BY timestamp ASC"
+        else:
+            table += " ORDER BY timestamp DESC"
+
+        if limit:
+            table += f" LIMIT {limit}"
+
+        if offset:
+            table += f" OFFSET {offset}"
+        print(table)
         try:
             return duck_db_connection.execute(
-                query.replace("[table]", table)
+                query.replace("[table]", f"({table})")
             ).fetchall()
         except Exception as e:
             raise AnotherWorldException(f"Query failed: {e}")

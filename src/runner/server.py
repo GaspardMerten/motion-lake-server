@@ -4,6 +4,7 @@ import gc
 import json
 import os
 from datetime import datetime
+from typing import Optional
 
 import fastapi
 from pydantic import BaseModel
@@ -172,6 +173,9 @@ async def store_data(
 class AdvancedQueryRequest(BaseModel):
     min_timestamp: int
     max_timestamp: int
+    ascending: Optional[bool] = True
+    limit: Optional[int] = None
+    offset: Optional[int] = None
     query: str
 
 
@@ -191,7 +195,13 @@ async def advanced_query(
 
     try:
         results = core.advanced_query(
-            collection_name, request.query, min_timestamp, max_timestamp
+            collection_name,
+            request.query,
+            min_timestamp,
+            max_timestamp,
+            request.limit,
+            request.ascending,
+            request.offset,
         )
     except AnotherWorldException as e:
         response.status_code = status.HTTP_400_BAD_REQUEST

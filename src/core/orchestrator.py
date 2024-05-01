@@ -9,6 +9,7 @@ from src.core.engine import Engine
 from src.core.io_manager.base import IOManager
 from src.core.mixins.loggable import LoggableComponent
 from src.core.persistence.persistence import PersistenceManager
+from src.core.utils.exception import AnotherWorldException
 
 
 class Orchestrator(LoggableComponent):
@@ -137,6 +138,9 @@ class Orchestrator(LoggableComponent):
         query: str,
         min_timestamp: datetime,
         max_timestamp: datetime,
+        limit: int = None,
+        ascending: bool = True,
+        offset: int = None,
     ):
         """
         Perform an advanced query on the given collection.
@@ -144,11 +148,24 @@ class Orchestrator(LoggableComponent):
         :param query: The query to perform
         :param min_timestamp: The minimum timestamp to filter the data
         :param max_timestamp: The maximum timestamp to filter the data
+        :param offset: The offset of the data to retrieve
+        :param limit: The limit of the data to retrieve
+        :param ascending: Whether to sort the data in ascending order
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
 
+        # Max difference between timestamps is 1 day
+        if (max_timestamp - min_timestamp).days > 7:
+            raise AnotherWorldException("Max difference between timestamps is 7 day")
+
         return self._engine.advanced_query(
-            collection_name, query, min_timestamp, max_timestamp
+            collection_name,
+            query,
+            min_timestamp,
+            max_timestamp,
+            limit,
+            ascending,
+            offset,
         )
 
     def delete_collection(self, collection_name: str):

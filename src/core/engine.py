@@ -318,6 +318,9 @@ class Engine(LoggableComponent):
         query: str,
         min_timestamp: datetime,
         max_timestamp: datetime,
+        limit: int = None,
+        ascending: bool = None,
+        offset: int = None,
     ):
         """
         Perform an advanced query on the given collection.
@@ -325,6 +328,9 @@ class Engine(LoggableComponent):
         :param query: The query to perform
         :param min_timestamp: The minimum timestamp to filter the data
         :param max_timestamp: The maximum timestamp to filter the data
+        :param limit: The limit of the data to retrieve
+        :param ascending: Whether to sort the data in ascending order
+        :param offset: The offset of the data to retrieve
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
 
@@ -351,7 +357,14 @@ class Engine(LoggableComponent):
         duck_db_connection = self.io_manager.get_duck_db_connection()
 
         return self.bridge.advanced_query(
-            duck_db_connection, paths, query, min_timestamp, max_timestamp
+            duck_db_connection,
+            paths,
+            query,
+            min_timestamp,
+            max_timestamp,
+            limit,
+            ascending,
+            offset,
         )
 
     def delete_collection(self, collection_name: str):
