@@ -1,6 +1,5 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
-import gc
 import json
 import os
 from datetime import datetime
@@ -68,6 +67,7 @@ async def query_collection(
     :param skip_data: Whether to skip the data in the results (data will be None)
     :return: The data in the collection as a list of tuples of bytes and datetime
     """
+
     # Convert timestamps to datetime
     min_timestamp = datetime.fromtimestamp(min_timestamp)
     max_timestamp = datetime.fromtimestamp(max_timestamp)
@@ -163,9 +163,6 @@ async def store_data(
     except AnotherWorldException as e:
         response.status_code = status.HTTP_400_BAD_REQUEST
         return {"error": str(e)}
-    finally:
-        del data
-        gc.collect()
 
     return {"message": "Data stored successfully"}
 

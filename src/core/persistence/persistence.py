@@ -3,7 +3,7 @@
 
 from datetime import datetime
 from functools import wraps, lru_cache
-from typing import List
+from typing import List, Tuple
 
 from sqlalchemy import create_engine, func, text
 from sqlalchemy.exc import IntegrityError, NoResultFound
@@ -120,15 +120,23 @@ class PersistenceManager:
         :return: A list of collections
         """
 
-        # Create an aggregate query to get all collections + add min/max timestamp and count
+        # Sub query
+        results = session.query(
+            Item,
+            func.min(Item.timestamp).label("min_timestamp"),
+            func.max(Item.timestamp).label("max_timestamp"),
+            func.count(Item.timestamp).label("count"),
+        )
+
+        # for each collection, get the min and max timestamp and the count of items
         results = (
             session.query(
                 Collection,
-                func.min(Item.timestamp).label("min_timestamp"),
-                func.max(Item.timestamp).label("max_timestamp"),
-                func.count(Item.timestamp).label("count"),
+                results.subquery().columns.min_timestamp,
+                results.subquery().columns.max_timestamp,
+                results.subquery().columns.count,
             )
-            .outerjoin(Item)
+            .outerjoin(Item, Collection.id == Item.collection_id)
             .group_by(Collection.id)
             .all()
         )
@@ -341,7 +349,7 @@ class PersistenceManager:
         fragment = Fragment(
             collection_id=collection.id,
             uuid=new_fragment_uuid,
-            content_type=content_type,
+            content_type=content_type.value,
         )
 
         session.add(fragment)
@@ -511,11 +519,13 @@ class PersistenceManager:
         )
 
     @with_session
-    def get_last_hash(self, session: Session, collection_name: str) -> int | None:
+    def get_last_hash(
+        self, session: Session, collection_name: str
+    ) -> Tuple[str, datetime]:
         """
         Get the last hash of the collection (last buffer if any, last item otherwise, None if empty).
         :param collection_name: The name of the collection
-        :return: The last hash of the collection
+        :return: The last hash of the collection, and the timestamp of the last item
         """
 
         collection = self.get_collection_by_name(collection_name)
@@ -540,6 +550,6 @@ class PersistenceManager:
         )
 
         if last_item:
-            return last_item.hash
+            return last_item.hash, last_item.timestamp
 
-        return None
+        return None, None

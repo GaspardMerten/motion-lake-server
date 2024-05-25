@@ -18,7 +18,7 @@ from src.core.persistence.persistence import PersistenceManager
 from src.core.persistence.tables import Collection
 from src.core.utils.exception import AnotherWorldException
 
-DEFAULT_BUFFER_SIZE = 10  # 10 MB
+DEFAULT_BUFFER_SIZE = 40  # 10 MB
 
 
 class Engine(LoggableComponent):
@@ -83,6 +83,8 @@ class Engine(LoggableComponent):
         :param create_collection: Whether to create the collection if it does not exist
         :return: None
         """
+
+        start_time = datetime.now()
         collection = self.check_collection(collection_name, create_collection)
         data_hash = md5(data).hexdigest()
 
@@ -92,10 +94,13 @@ class Engine(LoggableComponent):
             )
 
         # Prevent data duplication
-        if self.hash_cache.get(collection_name) == data_hash:
+        if (
+            self.hash_cache.get(collection_name)[0] == data_hash
+            and self.hash_cache.get(collection_name)[1] < timestamp
+        ):
             return
         else:
-            self.hash_cache[collection_name] = data_hash
+            self.hash_cache[collection_name] = (data_hash, timestamp)
 
         buffer_uuid = str(uuid4())
 
@@ -129,6 +134,8 @@ class Engine(LoggableComponent):
         ):
             self.log("Flushing collection: " + collection_name)
             self.flush(collection_name)
+
+        print("Total time taken: ", (datetime.now() - start_time).microseconds)
 
     def check_collection(self, collection_name: str, create_collection: bool):
         """
@@ -235,7 +242,7 @@ class Engine(LoggableComponent):
         :param skip_data: Whether to skip the data in the results (data will be None)
         :return: The data in the collection as a list of tuples of bytes and datetime
         """
-
+        start = datetime.now()
         try:
             collection = self.persistence_manager.get_collection_by_name(
                 collection_name
@@ -243,13 +250,14 @@ class Engine(LoggableComponent):
         except AnotherWorldException:
             return []
 
-        # noinspection PyTypeChecker
         fragments = self.persistence_manager.query(
             collection, min_timestamp, max_timestamp, ascending, limit
         )
+
         buffers = self.persistence_manager.query_buffers_do_not_lock(
             collection, min_timestamp, max_timestamp, ascending, limit
         )
+
         if skip_data:
             items = self.persistence_manager.get_items_from_fragments(fragments)
             data = [
@@ -264,6 +272,7 @@ class Engine(LoggableComponent):
 
         result = []
 
+        start = datetime.now()
         for item in itertools.chain(fragments, buffers):
             result.extend(
                 await self._get_fragment_items(
@@ -305,6 +314,7 @@ class Engine(LoggableComponent):
         with self.io_manager.get_read_context(collection.name, fragment_uuid) as f:
             result = await self.bridge.read(
                 f,
+                reader_id=fragment_uuid,
                 content_type=content_type,
                 where={"min_timestamp": min_timestamp, "max_timestamp": max_timestamp},
                 order_by=["timestamp" if ascending else "timestamp desc"],

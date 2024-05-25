@@ -28,4 +28,4 @@ echo "Running FastAPI app on $HOST:$PORT with $THREADS threads"
 
 # Running the FastAPI app with Uvicorn
 gunicorn "src.runner.server:app" --workers $THREADS --worker-class uvicorn.workers.UvicornWorker --bind $HOST:$PORT \
-   --max-requests 10 --timeout 120
+   --max-requests 10000 --timeout 120

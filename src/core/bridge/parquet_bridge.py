@@ -1,5 +1,6 @@
 #  Copyright (c) 2024. Gaspard Merten
 #  All rights reserved.
+import os
 from datetime import datetime
 from io import BytesIO
 from typing import List, Tuple, Iterable
@@ -7,6 +8,7 @@ from typing import List, Tuple, Iterable
 import polars
 import pyarrow as pa
 import pyarrow.parquet as pq
+from polars import col
 from pyarrow import ArrowInvalid
 
 from src.core.bridge.parsers.base import MissMatchingTypesException
@@ -44,6 +46,8 @@ class ParquetBridge(LoggableComponent):
         self.compression = settings.get("compression", "gzip")
         self.compression_level = settings.get("compression_level", "9")
         self.schema_cache = {}
+        self.last_read_id = None
+        self.last_read = None
 
     def _table_to_bytes(
         self, table: pa.Table, output: BytesIO, snappy=False
@@ -56,6 +60,8 @@ class ParquetBridge(LoggableComponent):
         :return: The table as bytes
         """
         try:
+            # set timestamp as index
+
             pq.write_table(
                 table,
                 output,
@@ -212,9 +218,43 @@ class ParquetBridge(LoggableComponent):
 
         return table and self._table_to_bytes(table, BytesIO()), skipped
 
+    def read_parquet_cache(
+        self, reader: BytesIO, reader_id: str, min_timestamp=None, max_timestamp=None
+    ):
+        if reader_id != self.last_read_id:
+            read = polars.read_parquet(reader, parallel="columns", use_pyarrow=True)
+
+            self.last_read_id = reader_id
+            self.last_read = read
+
+        result = self.last_read
+
+        if min_timestamp:
+            result = result.filter(col("timestamp") >= min_timestamp)
+        if max_timestamp:
+            result = result.filter(col("timestamp") <= max_timestamp)
+
+        return result
+
     @staticmethod
+    def read_parquet(reader: BytesIO, min_timestamp=None, max_timestamp=None):
+        table_filters = []
+
+        if min_timestamp:
+            table_filters.append(("timestamp", ">=", int(min_timestamp.timestamp())))
+        if max_timestamp:
+            table_filters.append(("timestamp", "<=", int(max_timestamp.timestamp())))
+        return polars.read_parquet(
+            reader,
+            parallel="columns",
+            use_pyarrow=True,
+            pyarrow_options={"filters": table_filters},
+        )
+
     async def read(
+        self,
         reader: BytesIO,
+        reader_id: str,
         content_type: ContentType,
         where: {},
         order_by: List[str] = None,
@@ -239,19 +279,12 @@ class ParquetBridge(LoggableComponent):
         content_type = ContentType(content_type)
         serialize = MAPPING.get(content_type, BytesParser)().serialize
 
-        table_filters = []
+        # pyarrow options are: https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
 
-        if "min_timestamp" in where:
-            table_filters.append(
-                ("timestamp", ">=", int(where["min_timestamp"].timestamp()))
-            )
-        if "max_timestamp" in where:
-            table_filters.append(
-                ("timestamp", "<=", int(where["max_timestamp"].timestamp()))
-            )
-
-        data = polars.read_parquet(
-            reader, use_pyarrow=True, pyarrow_options=dict(filters=table_filters)
+        data = self.read_parquet(
+            "storage/benchmark/" + reader_id,
+            min_timestamp=where.get("min_timestamp"),
+            max_timestamp=where.get("max_timestamp"),
         )
 
         filtered_data = []
@@ -270,7 +303,6 @@ class ParquetBridge(LoggableComponent):
                     row[1],
                 )
             )
-
         return filtered_data
 
     @staticmethod
@@ -304,17 +336,6 @@ class ParquetBridge(LoggableComponent):
             f">= {min_timestamp.timestamp()} AND timestamp <= {max_timestamp.timestamp()}"
         )
 
-        if ascending:
-            table += " ORDER BY timestamp ASC"
-        else:
-            table += " ORDER BY timestamp DESC"
-
-        if limit:
-            table += f" LIMIT {limit}"
-
-        if offset:
-            table += f" OFFSET {offset}"
-        print(table)
         try:
             return duck_db_connection.execute(
                 query.replace("[table]", f"({table})")
