@@ -121,32 +121,23 @@ class PersistenceManager:
         """
 
         # Sub query
-        results = session.query(
-            Item,
-            func.min(Item.timestamp).label("min_timestamp"),
-            func.max(Item.timestamp).label("max_timestamp"),
-            func.count(Item.timestamp).label("count"),
-        )
-
-        # for each collection, get the min and max timestamp and the count of items
         results = (
             session.query(
-                Collection,
-                results.subquery().columns.min_timestamp,
-                results.subquery().columns.max_timestamp,
-                results.subquery().columns.count,
+                Item.collection_id,
+                func.min(Item.timestamp).label("min_timestamp"),
+                func.max(Item.timestamp).label("max_timestamp"),
+                func.count(Item.timestamp).label("count"),
             )
-            .outerjoin(Item, Collection.id == Item.collection_id)
-            .group_by(Collection.id)
+            .group_by(Item.collection_id)
             .all()
         )
-
         buffer_stat = self.get_collections_buffer_stat()
 
         # Create a list of dictionaries with the collection name, min/max timestamp, and count
         collections = []
 
-        for collection, min_timestamp, max_timestamp, count in results:
+        for collection_id, min_timestamp, max_timestamp, count in results:
+            collection = self.get_collection_from_id(collection_id)
             min_timestamps = [min_timestamp] if min_timestamp is not None else []
             min_timestamps.append(
                 buffer_stat.get(collection.id, {}).get("min_timestamp", None)
@@ -170,6 +161,12 @@ class PersistenceManager:
             )
 
         return collections
+
+    @lru_cache(maxsize=1024)
+    def get_collection_from_id(self, collection_id: int):
+        return (
+            self.protected_session.query(Collection).filter_by(id=collection_id).one()
+        )
 
     @with_session
     def get_collections_buffer_stat(self, session: Session) -> dict:
