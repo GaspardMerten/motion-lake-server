@@ -54,7 +54,7 @@ def main():
         host=args.ip,
         port=args.port,
         workers=args.threads,
-        limit_max_requests=1,
+        limit_max_requests=os.environ.get("MAX_REQUESTS", 50),
         reload=True,
     )
 
